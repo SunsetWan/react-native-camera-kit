@@ -5,6 +5,7 @@
 
 import AVFoundation
 import UIKit
+import ImageIO
 
 public enum CameraType: Int, CustomStringConvertible {
     case back
@@ -172,4 +173,16 @@ public enum Orientation: Int, CaseIterable {
         case .landscapeRight: return 0
         }
     }
+
+    /// The preview uses interface axes even when physical rotation is locked.
+    func visionOrientation(cameraType: CameraType) -> CGImagePropertyOrientation {
+        let front = cameraType == .front
+        switch self {
+        case .landscapeRight: return front ? .downMirrored : .up
+        case .landscapeLeft: return front ? .upMirrored : .down
+        case .portraitUpsideDown: return front ? .rightMirrored : .left
+        case .portrait: return front ? .leftMirrored : .right
+        }
+    }
+
 }

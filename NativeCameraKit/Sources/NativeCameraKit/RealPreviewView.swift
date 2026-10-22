@@ -7,6 +7,13 @@ import AVFoundation
 import UIKit
 
 class RealPreviewView: UIView {
+    var onLayout: (() -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?()
+    }
+
     // Use AVCaptureVideoPreviewLayer as the view's backing layer.
     override class var layerClass: AnyClass {
         AVCaptureVideoPreviewLayer.self

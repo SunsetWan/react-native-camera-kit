@@ -8,8 +8,12 @@ public final class CameraController {
     public var configuration: CameraConfiguration {
         didSet { cameraView?.configuration = configuration }
     }
-    public var onReadCode: ((Barcode) -> Void)?
-    public var onFaceDetected: (([FaceDetectionPayload]) -> Void)?
+    public var onReadCode: ((Barcode) -> Void)? {
+        didSet { updateDetectionCallbacks() }
+    }
+    public var onFaceDetected: (([FaceDetectionPayload]) -> Void)? {
+        didSet { updateDetectionCallbacks() }
+    }
     public var onOrientationChange: ((Orientation) -> Void)?
     public var onZoom: ((Double) -> Void)?
     public var onCaptureButtonPressIn: (() -> Void)?
@@ -29,11 +33,10 @@ public final class CameraController {
         return try await cameraView.capture()
     }
 
-    fileprivate func attach(_ view: CameraView) {
+    func attach(_ view: CameraView) {
         cameraView = view
         view.configuration = configuration
-        view.onReadCode = { [weak self] in self?.onReadCode?($0) }
-        view.onFaceDetected = { [weak self] in self?.onFaceDetected?($0) }
+        updateDetectionCallbacks()
         view.onOrientationChange = { [weak self] in self?.onOrientationChange?($0) }
         view.onZoom = { [weak self] in self?.onZoom?($0) }
         view.onCaptureButtonPressIn = { [weak self] in self?.onCaptureButtonPressIn?() }
@@ -41,7 +44,12 @@ public final class CameraController {
         view.onError = { [weak self] in self?.onError?($0) }
     }
 
-    fileprivate func detach(_ view: CameraView) {
+    private func updateDetectionCallbacks() {
+        cameraView?.onReadCode = onReadCode == nil ? nil : { [weak self] in self?.onReadCode?($0) }
+        cameraView?.onFaceDetected = onFaceDetected == nil ? nil : { [weak self] in self?.onFaceDetected?($0) }
+    }
+
+    func detach(_ view: CameraView) {
         guard cameraView === view else { return }
         view.stop()
         cameraView = nil

@@ -10,7 +10,9 @@ final class SimulatorCamera: CameraProtocol {
     private var onZoom: ((Double) -> Void)?
     private var zoom: Double?
     private var maxZoom: Double?
+    private var cameraType: CameraType?
     private var currentZoom = 1.0
+    private var lastZoom: Double?
     private var zoomStartedAt = 1.0
     private var running = false
     private var didSetup = false
@@ -21,7 +23,6 @@ final class SimulatorCamera: CameraProtocol {
         guard !didSetup else { return }
         didSetup = true
         update(cameraType: cameraType)
-        update(zoom: nil)
     }
 
     func start() {
@@ -67,8 +68,18 @@ final class SimulatorCamera: CameraProtocol {
 
     func update(torchMode: TorchMode) { mockPreview.torchModeLabel.text = "Torch: \(torchMode)" }
     func update(flashMode: FlashMode) { mockPreview.flashModeLabel.text = "Flash: \(flashMode)" }
-    func update(cameraType: CameraType) { mockPreview.cameraTypeLabel.text = "Camera: \(cameraType)" }
-    func update(resizeMode: ResizeMode) { mockPreview.resizeModeLabel.text = "Resize: \(resizeMode)" }
+    func update(cameraType: CameraType) {
+        guard self.cameraType != cameraType else { return }
+        self.cameraType = cameraType
+        mockPreview.cameraTypeLabel.text = "Camera: \(cameraType)"
+        mockPreview.randomize()
+        setZoom(zoom ?? 1)
+        emitZoom(currentZoom)
+    }
+    func update(resizeMode: ResizeMode) {
+        mockPreview.resizeModeLabel.text = "Resize: \(resizeMode)"
+        mockPreview.randomize()
+    }
 
     func update(maxZoom: Double?) {
         self.maxZoom = maxZoom.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
@@ -80,17 +91,28 @@ final class SimulatorCamera: CameraProtocol {
         setZoom(self.zoom ?? currentZoom)
     }
 
-    func zoomPinchStart() { zoomStartedAt = currentZoom }
+    func zoomPinchStart() {
+        zoomStartedAt = currentZoom
+        lastZoom = nil
+    }
 
     func zoomPinchChange(pinchScale: CGFloat) {
         guard pinchScale.isFinite, pinchScale > 0 else { return }
         let desired = clamp(zoomStartedAt * pinchScale)
         guard desired != currentZoom else { return }
         if zoom == nil { setZoom(desired) }
-        onZoom?(desired)
+        emitZoom(desired)
     }
 
-    private func clamp(_ value: Double) -> Double { max(0.5, min(value, maxZoom ?? 75)) }
+    private func emitZoom(_ value: Double) {
+        guard value != lastZoom else { return }
+        lastZoom = value
+        onZoom?(value)
+    }
+
+    private func clamp(_ value: Double) -> Double {
+        max(cameraType == .front ? 1 : 0.5, min(value, min(maxZoom ?? 75, 75)))
+    }
     private func setZoom(_ value: Double) {
         currentZoom = clamp(value)
         mockPreview.zoomLabel.text = String(format: "Zoom: %.2fx", currentZoom)
@@ -100,7 +122,7 @@ final class SimulatorCamera: CameraProtocol {
         mockPreview.focusAtLabel.text = "Focus: (\(Int(touchPoint.x)), \(Int(touchPoint.y)))"
         focusTimer?.invalidate()
         if case .customFocus(_, _, let finished) = focusBehavior {
-            focusTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: false) { _ in finished() }
+            focusTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { _ in finished() }
         }
     }
 
@@ -108,11 +130,13 @@ final class SimulatorCamera: CameraProtocol {
                         onSuccess: @escaping (Data, Data?, CMVideoDimensions) -> Void,
                         onError: @escaping (String) -> Void) {
         guard running else { onError("The camera is not running."); return }
-        onWillCapture()
-        guard let data = mockPreview.snapshot().jpegData(compressionQuality: 0.85) else {
+        let image = mockPreview.snapshot()
+        guard let pixels = image.cgImage, let data = image.jpegData(compressionQuality: 0.85) else {
             onError("The simulator could not encode the photo.")
             return
         }
-        onSuccess(data, nil, CMVideoDimensions(width: 480, height: 640))
+        // Snapshot before the caller starts its shutter animation.
+        onWillCapture()
+        onSuccess(data, nil, CMVideoDimensions(width: Int32(pixels.width), height: Int32(pixels.height)))
     }
 }

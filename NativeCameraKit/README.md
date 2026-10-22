@@ -6,9 +6,9 @@ This port uses the iOS behavior of React Native Camera Kit v18.0.1 (`a2a81ce`) a
 
 ## Open the UIKit example
 
-Open `NativeCameraKit/Example/CameraKitDemo.xcodeproj` in Xcode 26 or later. Select the example scheme, then run on an iPhone or iPad. Set your own signing team for a physical device. The simulator uses a generated sample image; it does not provide a real camera or detector.
+Open `NativeCameraKit/Example/CameraKitDemo.xcodeproj` in Xcode 26 or later. Select the example scheme, then run on an iPhone or iPad. Set your own signing team for a physical device. The simulator provides an animated balloon scene, live control labels, and timestamped JPEG captures. It does not provide a camera or live detector.
 
-The example includes camera switching, flash, torch, focus, pinch and controlled zoom, barcode filters and scan frame, face bounds, aspect-ratio guides, photo quality, hardware capture, and a captured-photo viewer. The settings screen exposes timing and appearance controls.
+The home screen opens three UIKit examples: Camera, Barcode / QR, and Mount Stress Test. Camera includes camera switching, flash, torch, focus, pinch and controlled zoom, five-photo bursts with timing, face bounds, aspect-ratio guides, photo quality, hardware capture, and a captured-photo viewer. The scanner starts with QR/EAN-13 filters, a 300 × 150 scan frame, vibration, and a result that clears after two seconds. The settings screen exposes timing and appearance controls. The stress screen repeatedly mounts and removes a camera at an editable interval; the camera screen also has a random-zoom stress mode.
 
 ## Add the package
 
@@ -70,6 +70,8 @@ final class CameraViewController: UIViewController {
 
 Call the UIKit API on the main thread. Attaching the view to a window starts the camera and requests permission when needed. Removing it stops the session. Use `start()` and `stop()` to manage a view that stays attached while another screen covers it. The view also handles application background and foreground transitions. Permission denial is reported through `onError`. `isRunning` describes the requested state; hardware startup is asynchronous and `capture()` checks readiness. If setup fails, call `stop()` followed by `start()` to retry.
 
+To request permission before presenting the view, read `CameraAuthorization.status` and call `try await CameraAuthorization.requestAccess()`. A denied or restricted request returns `false`; a missing usage description throws `CameraError.missingUsageDescription`.
+
 `capture()` returns a typed `CapturedPhoto` containing `url`, `uri`, `name`, `size`, `width`, `height`, and the source-compatible empty `thumb`. The image is not cropped to the scan frame or ratio guide. Concurrent capture requests are rejected while a capture is pending.
 
 ## Optional SwiftUI adapter
@@ -110,7 +112,7 @@ xcodebuild -project NativeCameraKit/Example/CameraKitDemo.xcodeproj \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-Choose an installed simulator if the named device is unavailable. Simulator tests cover API, layout, lifecycle, generated JPEG capture, and the UIKit flow. They do not prove camera hardware, real barcode or face detection, torch, autofocus, or hardware-button behavior. Follow the device checklist before a production release.
+Choose an installed simulator if the named device is unavailable. Simulator tests cover API, layout, lifecycle, JPEG capture, Vision face inference on a public-domain image, and the UIKit flows. They do not prove sensor input, live barcode or face detection, torch, autofocus, or hardware-button behavior. See [VALIDATION.md](VALIDATION.md) for recorded results and follow the device checklist before a production release.
 
 ## License and source
 

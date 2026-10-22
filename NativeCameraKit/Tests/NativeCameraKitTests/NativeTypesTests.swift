@@ -28,7 +28,7 @@ final class NativeTypesTests: XCTestCase {
         XCTAssertFalse(configuration.faceDetectionEnabled)
         XCTAssertEqual(configuration.faceDetectionThrottleMs, 100)
         XCTAssertEqual(configuration.resetFocusTimeout, 0)
-        XCTAssertFalse(configuration.resetFocusWhenMotionDetected)
+        XCTAssertTrue(configuration.resetFocusWhenMotionDetected)
         XCTAssertTrue(configuration.iOsDeferredStart)
     }
 

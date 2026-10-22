@@ -50,6 +50,7 @@ final class PhotoViewController: UIViewController, UIScrollViewDelegate {
         details.numberOfLines = 0
         details.textAlignment = .center
         details.accessibilityIdentifier = "photo-details"
+        details.setContentCompressionResistancePriority(.required, for: .vertical)
         details.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(scroll)
         view.addSubview(details)

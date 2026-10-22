@@ -1,29 +1,19 @@
-//
-//  RatioOverlayView.swift
-//  NativeCameraKit
-//
-
 import UIKit
 
+/// The source API uses height:width, so 16:9 describes a portrait guide.
 struct RatioOverlayData: CustomStringConvertible {
     let width: Float
     let height: Float
     let ratio: Float
 
     init(from inputString: String) {
-        let values = inputString.split(separator: ":")
-
+        let values = inputString.split(separator: ":", omittingEmptySubsequences: false)
         if values.count == 2,
-           let inputHeight = Float(values[0]),
-           let inputWidth = Float(values[1]),
-           inputHeight.isFinite,
-           inputWidth.isFinite,
-           inputHeight > 0,
-           inputWidth > 0,
-           (inputWidth / inputHeight).isFinite,
-           inputWidth / inputHeight > 0 {
-            height = inputHeight
-            width = inputWidth
+           let height = Float(values[0]), let width = Float(values[1]),
+           height.isFinite, width.isFinite, height > 0, width > 0,
+           (width / height).isFinite, width / height > 0 {
+            self.height = height
+            self.width = width
             ratio = width / height
         } else {
             height = 0
@@ -32,137 +22,62 @@ struct RatioOverlayData: CustomStringConvertible {
         }
     }
 
-    // MARK: CustomStringConvertible
-
-    var description: String {
-        return "height:\(height) width:\(width) ratio:\(ratio)"
-    }
+    var description: String { "height:\(height) width:\(width) ratio:\(ratio)" }
 }
 
-/*
- * Full screen overlay that can appear on top of the camera as an hint for the expected ratio
- */
-class RatioOverlayView: UIView {
-    private var ratioData: RatioOverlayData?
-
-    private let topView: UIView = UIView()
-    private let bottomView: UIView = UIView()
-
-    // MARK: - Lifecycle
+/// A guide only. The camera still returns the full captured photo.
+final class RatioOverlayView: UIView {
+    private var ratioData: RatioOverlayData
+    private let firstMask = UIView()
+    private let secondMask = UIView()
 
     init(frame: CGRect, ratioString: String, overlayColor: UIColor?) {
+        ratioData = RatioOverlayData(from: ratioString)
         super.init(frame: frame)
-
         isUserInteractionEnabled = false
-
-        let color = overlayColor ?? UIColor.black.withAlphaComponent(0.3)
-        setColor(color)
-
-        addSubview(topView)
-        addSubview(bottomView)
-
-        setRatio(ratioString)
+        addSubview(firstMask)
+        addSubview(secondMask)
+        setColor(overlayColor ?? .black.withAlphaComponent(0.3))
+        updateMasks()
     }
 
     @available(*, unavailable)
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-
-        setOverlayParts()
+        updateMasks()
     }
-
-    // MARK: - Public
 
     func setRatio(_ ratioString: String) {
         ratioData = RatioOverlayData(from: ratioString)
-
-        UIView.animate(withDuration: 0.2) {
-            self.setOverlayParts()
-        }
+        UIView.animate(withDuration: 0.2) { self.updateMasks() }
     }
 
     func setColor(_ color: UIColor) {
-        topView.backgroundColor = color
-        bottomView.backgroundColor = color
+        firstMask.backgroundColor = color
+        secondMask.backgroundColor = color
     }
 
-    // MARK: - Private
-
-    // swiftlint:disable:next function_body_length
-    private func setOverlayParts() {
-        guard let ratioData, ratioData.ratio != 0 else {
+    private func updateMasks() {
+        guard ratioData.ratio > 0, bounds.width > 0, bounds.height > 0 else {
+            firstMask.frame = .zero
+            secondMask.frame = .zero
             isHidden = true
-
             return
         }
-
         isHidden = false
-
-        var centerSize = CGSize.zero
-        var sideSize = CGSize.zero
-        var centerFrame: CGRect
-
-        if ratioData.width < ratioData.height {
-            centerSize.width = bounds.size.width
-            centerSize.height = bounds.size.height * CGFloat(ratioData.ratio)
-
-            sideSize.width = centerSize.width
-            sideSize.height = (bounds.size.height - centerSize.height) / 2.0
-
-            topView.frame = CGRect(x: 0,
-                                   y: 0,
-                                   width: sideSize.width,
-                                   height: sideSize.height)
-            centerFrame = CGRect(x: 0,
-                          y: topView.bounds.size.height + topView.frame.origin.y,
-                          width: centerSize.width,
-                          height: centerSize.height)
-            bottomView.frame = CGRect(x: 0,
-                                      y: centerFrame.size.height + centerFrame.origin.y,
-                                      width: sideSize.width,
-                                      height: sideSize.height)
-        } else if ratioData.width > ratioData.height {
-            centerSize.width = bounds.size.width / CGFloat(ratioData.ratio)
-            centerSize.height = bounds.size.height
-
-            sideSize.width = (bounds.size.width - centerSize.width) / 2.0
-            sideSize.height = centerSize.height
-
-            topView.frame = CGRect(x: 0,
-                                   y: 0,
-                                   width: sideSize.width,
-                                   height: sideSize.height)
-            centerFrame = CGRect(x: topView.bounds.size.width + topView.frame.origin.x,
-                          y: 0,
-                          width: centerSize.width,
-                          height: centerSize.height)
-            bottomView.frame = CGRect(x: centerFrame.size.width + centerFrame.origin.x,
-                                      y: 0,
-                                      width: sideSize.width,
-                                      height: sideSize.height)
-        } else { // ratio is 1:1
-            centerSize.width = bounds.size.width
-            centerSize.height = min(bounds.size.width, bounds.size.height)
-
-            sideSize.width = centerSize.width
-            sideSize.height = (bounds.size.height - centerSize.height) / 2.0
-
-            topView.frame = CGRect(x: 0,
-                                   y: 0,
-                                   width: sideSize.width,
-                                   height: sideSize.height)
-            centerFrame = CGRect(x: 0,
-                                  y: topView.bounds.size.height + topView.frame.origin.y,
-                                  width: centerSize.width,
-                                  height: centerSize.height)
-            bottomView.frame = CGRect(x: 0,
-                                      y: centerFrame.size.height + centerFrame.origin.y,
-                                      width: sideSize.width,
-                                      height: sideSize.height)
+        let aspectRatio = CGFloat(ratioData.ratio)
+        if bounds.width / bounds.height > aspectRatio {
+            let guideWidth = bounds.height * aspectRatio
+            let maskWidth = (bounds.width - guideWidth) / 2
+            firstMask.frame = CGRect(x: bounds.minX, y: bounds.minY, width: maskWidth, height: bounds.height)
+            secondMask.frame = CGRect(x: bounds.maxX - maskWidth, y: bounds.minY, width: maskWidth, height: bounds.height)
+        } else {
+            let guideHeight = bounds.width / aspectRatio
+            let maskHeight = (bounds.height - guideHeight) / 2
+            firstMask.frame = CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: maskHeight)
+            secondMask.frame = CGRect(x: bounds.minX, y: bounds.maxY - maskHeight, width: bounds.width, height: maskHeight)
         }
     }
 }

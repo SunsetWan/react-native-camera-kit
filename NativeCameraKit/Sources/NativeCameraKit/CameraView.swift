@@ -64,15 +64,22 @@ public final class CameraView: UIView {
         addSubview(scannerInterfaceView)
         addSubview(focusInterfaceView)
         focusInterfaceView.delegate = camera
+        focusInterfaceView.isUserInteractionEnabled = false
         scannerInterfaceView.isUserInteractionEnabled = false
         camera.onError = { [weak self] message in
             DispatchQueue.main.async { self?.onError?(.captureFailed(message)) }
         }
         camera.update(onOrientationChange: { [weak self] orientation in
-            DispatchQueue.main.async { self?.onOrientationChange?(orientation) }
+            DispatchQueue.main.async {
+                guard let self, self.isRunning else { return }
+                self.onOrientationChange?(orientation)
+            }
         })
         camera.update(onZoom: { [weak self] zoom in
-            DispatchQueue.main.async { self?.onZoom?(zoom) }
+            DispatchQueue.main.async {
+                guard let self, self.isRunning else { return }
+                self.onZoom?(zoom)
+            }
         })
         applyConfiguration(previous: nil)
         configureHardwareInteraction()
@@ -150,8 +157,9 @@ public final class CameraView: UIView {
 
     private func pauseCamera() {
         isRunning = false
-        camera.stop()
         focusInterfaceView.cancelPendingFocus()
+        focusInterfaceView.isUserInteractionEnabled = false
+        camera.stop()
         scannerInterfaceView.stopAnimatingScanner()
         setHardwareInteractionEnabled(false)
     }
@@ -199,14 +207,14 @@ public final class CameraView: UIView {
 
     private func startAuthorizedCamera() {
         guard wantsRunning, !isRunning, !isInBackground else { return }
-        camera.update(iOsDeferredStartEnabled: configuration.iOsDeferredStart)
+        hasCameraBeenSetup = true
+        applyConfiguration(previous: nil)
         camera.setup(
             cameraType: effectiveCameraType,
             supportedBarcodeType: configuration.scanBarcode ? configuration.supportedBarcodeTypes : []
         )
-        hasCameraBeenSetup = true
-        applyConfiguration(previous: nil)
         isRunning = true
+        focusInterfaceView.isUserInteractionEnabled = true
         camera.start()
         if configuration.showFrame { scannerInterfaceView.startAnimatingScanner() }
         setHardwareInteractionEnabled(true)
@@ -222,22 +230,44 @@ public final class CameraView: UIView {
 
     private func applyConfiguration(previous: CameraConfiguration?) {
         let current = configuration
-        focusInterfaceView.update(focusMode: current.focusMode)
-        focusInterfaceView.update(resetFocusTimeout: current.resetFocusTimeout)
-        focusInterfaceView.update(resetFocusWhenMotionDetected: current.resetFocusWhenMotionDetected)
-        updateZoomGesture()
-        updateRatioOverlay()
-        scannerInterfaceView.isHidden = !current.showFrame
-        scannerInterfaceView.update(frameColor: current.frameColor)
-        scannerInterfaceView.update(laserColor: current.laserColor)
-        scannerInterfaceView.update(frameSize: current.barcodeFrameSize ?? CGSize(width: 300, height: 150))
+        applyInteractionConfiguration(current, previous: previous)
+        applyOverlayConfiguration(current, previous: previous)
+        setNeedsLayout()
+        guard hasCameraBeenSetup else { return }
+        applyCameraControls(current, previous: previous)
+        applyDetectionConfiguration(current, previous: previous)
+        updateScanRegion()
+    }
+
+    private func applyInteractionConfiguration(_ current: CameraConfiguration, previous: CameraConfiguration?) {
+        if previous?.focusMode != current.focusMode { focusInterfaceView.update(focusMode: current.focusMode) }
+        if previous?.resetFocusTimeout != current.resetFocusTimeout {
+            focusInterfaceView.update(resetFocusTimeout: current.resetFocusTimeout)
+        }
+        if previous?.resetFocusWhenMotionDetected != current.resetFocusWhenMotionDetected {
+            focusInterfaceView.update(resetFocusWhenMotionDetected: current.resetFocusWhenMotionDetected)
+        }
+        if previous?.zoomMode != current.zoomMode { updateZoomGesture() }
+    }
+
+    private func applyOverlayConfiguration(_ current: CameraConfiguration, previous: CameraConfiguration?) {
+        if previous == nil || previous?.ratioOverlay != current.ratioOverlay || previous?.ratioOverlayColor != current.ratioOverlayColor {
+            updateRatioOverlay()
+        }
+        if previous?.showFrame != current.showFrame { scannerInterfaceView.isHidden = !current.showFrame }
+        if previous?.frameColor != current.frameColor { scannerInterfaceView.update(frameColor: current.frameColor) }
+        if previous?.laserColor != current.laserColor { scannerInterfaceView.update(laserColor: current.laserColor) }
+        if previous == nil || previous?.barcodeFrameSize != current.barcodeFrameSize {
+            scannerInterfaceView.update(frameSize: current.barcodeFrameSize ?? CGSize(width: 300, height: 150))
+        }
         if current.showFrame && isRunning {
             scannerInterfaceView.startAnimatingScanner()
         } else {
             scannerInterfaceView.stopAnimatingScanner()
         }
-        setNeedsLayout()
-        guard hasCameraBeenSetup else { return }
+    }
+
+    private func applyCameraControls(_ current: CameraConfiguration, previous: CameraConfiguration?) {
         if let previous, previous.cameraType != current.cameraType {
             camera.update(cameraType: effectiveCameraType)
         }
@@ -254,6 +284,9 @@ public final class CameraView: UIView {
         if previous?.iOsDeferredStart != current.iOsDeferredStart {
             camera.update(iOsDeferredStartEnabled: current.iOsDeferredStart)
         }
+    }
+
+    private func applyDetectionConfiguration(_ current: CameraConfiguration, previous: CameraConfiguration?) {
         if previous?.faceDetectionThrottleMs != current.faceDetectionThrottleMs {
             camera.update(faceDetectionThrottleMs: current.faceDetectionThrottleMs)
         }
@@ -261,17 +294,17 @@ public final class CameraView: UIView {
             updateBarcodeDetection()
         }
         if previous?.faceDetectionEnabled != current.faceDetectionEnabled { updateFaceDetection() }
-        updateScanRegion()
     }
 
     private func updateBarcodeDetection() {
         guard hasCameraBeenSetup else { return }
+        let callback: ((String, CodeFormat) -> Void)? = onReadCode == nil ? nil : { [weak self] value, format in
+            DispatchQueue.main.async { self?.receiveBarcode(value, format: format) }
+        }
         camera.isBarcodeScannerEnabled(
             configuration.scanBarcode,
             supportedBarcodeTypes: configuration.supportedBarcodeTypes,
-            onBarcodeRead: { [weak self] value, format in
-                DispatchQueue.main.async { self?.receiveBarcode(value, format: format) }
-            }
+            onBarcodeRead: callback
         )
     }
 
@@ -284,12 +317,13 @@ public final class CameraView: UIView {
 
     private func updateFaceDetection() {
         guard hasCameraBeenSetup else { return }
-        camera.isFaceDetectionEnabled(configuration.faceDetectionEnabled, onFaceDetected: { [weak self] faces in
+        let callback: (([FaceDetectionPayload]) -> Void)? = onFaceDetected == nil ? nil : { [weak self] faces in
             DispatchQueue.main.async {
                 guard let self, self.isRunning, self.configuration.faceDetectionEnabled else { return }
                 self.onFaceDetected?(faces)
             }
-        })
+        }
+        camera.isFaceDetectionEnabled(configuration.faceDetectionEnabled, onFaceDetected: callback)
     }
 
     private func updateScanRegion() {

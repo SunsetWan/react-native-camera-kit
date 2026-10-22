@@ -35,6 +35,14 @@ public struct FaceDetectionPayload: Equatable {
         self.boundsWidth = boundsWidth
         self.boundsHeight = boundsHeight
     }
+    /// Retain out-of-frame coordinates so overlays can clip at the preview boundary.
+    func projected(in imageFrame: CGRect, previewSize: CGSize) -> FaceDetectionPayload {
+        FaceDetectionPayload(id: id, yaw: yaw, pitch: pitch, roll: roll,
+            boundsX: (imageFrame.minX + boundsX * imageFrame.width) / previewSize.width,
+            boundsY: (imageFrame.minY + boundsY * imageFrame.height) / previewSize.height,
+            boundsWidth: boundsWidth * imageFrame.width / previewSize.width,
+            boundsHeight: boundsHeight * imageFrame.height / previewSize.height)
+    }
 
 }
 
@@ -43,13 +51,19 @@ final class FaceDetector {
 
     private var throttleSeconds: TimeInterval = TimeInterval(FaceDetector.defaultThrottleMs) / 1000.0
 
-    private let request: VNDetectFaceRectanglesRequest = {
-        let request = VNDetectFaceRectanglesRequest()
-        request.revision = VNDetectFaceRectanglesRequestRevision3
-        return request
-    }()
+    private let request: VNDetectFaceRectanglesRequest
 
-    private var lastEmit: TimeInterval = 0
+    init(request: VNDetectFaceRectanglesRequest? = nil) {
+        if let request {
+            self.request = request
+        } else {
+            let request = VNDetectFaceRectanglesRequest()
+            request.revision = VNDetectFaceRectanglesRequestRevision3
+            self.request = request
+        }
+    }
+
+    private var lastEmit: TimeInterval?
     private var lastErrorDescription: String?
 
     func update(throttleMs: Int) {
@@ -59,7 +73,7 @@ final class FaceDetector {
 
     func process(pixelBuffer: CVPixelBuffer, orientation: CGImagePropertyOrientation) -> [FaceDetectionPayload]? {
         let now = ProcessInfo.processInfo.systemUptime
-        guard now - lastEmit >= throttleSeconds else { return nil }
+        if let lastEmit, now - lastEmit < throttleSeconds { return nil }
         lastEmit = now
 
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])

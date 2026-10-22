@@ -37,9 +37,10 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
     private var faceDetectionEnabled = false
     private var resetFocus: (() -> Void)?
     private var focusFinished: (() -> Void)?
-    private var deviceOrientation: UIDeviceOrientation = .portrait
+    private var deviceOrientation: UIDeviceOrientation = .unknown
     private var interfaceOrientation: Orientation = .portrait
     private var captureDelegates: [Int64: PhotoCaptureDelegate] = [:]
+    private let configurationGate = CaptureConfigurationGate()
     private var focusObservation: NSKeyValueObservation?
     private var subjectObserver: NSObjectProtocol?
     private var sessionObservers: [NSObjectProtocol] = []
@@ -58,6 +59,7 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
         // Assign before any session work starts: assigning a preview session changes its connections.
         cameraPreview.session = session
         cameraPreview.previewLayer.videoGravity = .resizeAspect
+        cameraPreview.onLayout = { [weak self] in self?.updatePreviewOrientation() }
         let center = NotificationCenter.default
         sessionObservers = [
             center.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) { [weak self] notification in self?.handleRuntimeError(notification)
@@ -159,17 +161,24 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
             let quality = maxPhotoQualityPrioritization ?? .balanced
             guard quality != self.quality else { return }
             self.quality = quality
-            self.cancelCaptures(message: "Photo quality changed before capture completed.")
-            self.session.beginConfiguration()
-            self.photoOutput.maxPhotoQualityPrioritization = self.quality.avQualityPrioritization
-            self.session.commitConfiguration()
+            self.configurationGate.performWhenIdle {
+                self.session.beginConfiguration()
+                self.photoOutput.maxPhotoQualityPrioritization = self.quality.avQualityPrioritization
+                self.session.commitConfiguration()
+            }
         }
     }
 
     func update(iOsDeferredStartEnabled: Bool?) {
         sessionQueue.async {
-            self.deferredStartEnabled = iOsDeferredStartEnabled ?? true
-            self.applyDeferredStart()
+            let enabled = iOsDeferredStartEnabled ?? true
+            guard enabled != self.deferredStartEnabled else { return }
+            self.deferredStartEnabled = enabled
+            self.configurationGate.performWhenIdle {
+                self.session.beginConfiguration()
+                self.applyDeferredStart()
+                self.session.commitConfiguration()
+            }
         }
     }
 
@@ -180,30 +189,35 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
 
     func update(cameraType: CameraType) {
         sessionQueue.async {
-            guard self.setupResult == .success, let oldInput = self.input,
-                  oldInput.device.position != cameraType.avPosition else { return }
-            guard let device = self.bestDevice(for: cameraType),
-                  let newInput = try? AVCaptureDeviceInput(device: device) else {
-                self.report("The selected camera is not available.")
-                return
-            }
-            self.cancelCaptures(message: "The selected camera changed before capture completed.")
-            self.session.beginConfiguration()
-            self.session.removeInput(oldInput)
-            if self.session.canAddInput(newInput) {
-                self.session.addInput(newInput)
-                self.input = newInput
-            } else {
-                self.session.addInput(oldInput)
-                self.report("The selected camera could not be connected.")
-            }
-            self.session.commitConfiguration()
-            self.observeFocus()
-            self.updateVisionOrientation()
-            if let currentDevice = self.input?.device { self.resetZoom(currentDevice) }
-            self.applyBarcodeConfiguration()
-            DispatchQueue.main.async { self.updatePreviewOrientation() }
+            self.configurationGate.performWhenIdle { self.changeCamera(to: cameraType) }
         }
+    }
+
+    private func changeCamera(to cameraType: CameraType) {
+        guard setupResult == .success, let oldInput = input,
+              oldInput.device.position != cameraType.avPosition else { return }
+        guard let device = bestDevice(for: cameraType),
+              let newInput = try? AVCaptureDeviceInput(device: device) else {
+            report("The selected camera is not available.")
+            return
+        }
+        session.beginConfiguration()
+        session.removeInput(oldInput)
+        if session.canAddInput(newInput) {
+            session.addInput(newInput)
+            input = newInput
+        } else {
+            session.addInput(oldInput)
+            report("The selected camera could not be connected.")
+        }
+        configureVisionConnection()
+        applyDeferredStart()
+        session.commitConfiguration()
+        observeFocus()
+        updateVisionOrientation()
+        if let currentDevice = input?.device { resetZoom(currentDevice) }
+        applyBarcodeConfiguration()
+        DispatchQueue.main.async { self.updatePreviewOrientation() }
     }
 
     func update(zoom: Double?) {
@@ -223,7 +237,10 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
     }
 
     func zoomPinchStart() {
-        sessionQueue.async { if let device = self.input?.device { self.zoomStartedAt = self.normalizedZoom(device) } }
+        sessionQueue.async {
+            self.lastZoom = nil
+            if let device = self.input?.device { self.zoomStartedAt = self.normalizedZoom(device) }
+        }
     }
 
     func zoomPinchChange(pinchScale: CGFloat) {
@@ -297,8 +314,12 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
                 }, onCaptureError: { _, message in
                     onError(message)
                 }, onFinished: { [weak self] id in
-                    self?.sessionQueue.async { [weak self] in self?.captureDelegates[id] = nil }
+                    self?.sessionQueue.async { [weak self] in
+                        self?.captureDelegates[id] = nil
+                        self?.configurationGate.endCapture(id: id)
+                    }
                 })
+            self.configurationGate.beginCapture(id: settings.uniqueID)
             self.captureDelegates[settings.uniqueID] = delegate
             self.photoOutput.capturePhoto(with: settings, delegate: delegate)
         }
@@ -321,6 +342,10 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
 
     private func applyBarcodeConfiguration() {
         guard setupResult == .success else { return }
+        guard session.outputs.contains(metadataOutput) else {
+            if barcodeEnabled { report("Barcode scanning is not available for this camera configuration.") }
+            return
+        }
         let available = metadataOutput.availableMetadataObjectTypes
         let requested = barcodeFormats.map { $0.toAVMetadataObjectType() }
         metadataOutput.metadataObjectTypes = barcodeEnabled ? Array(Set(requested.filter(available.contains))) : []
@@ -360,7 +385,7 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
         self.onFaceDetected = isEnabled ? onFaceDetected : nil
         sessionQueue.async {
             self.faceDetectionEnabled = isEnabled && onFaceDetected != nil
-            self.applyFaceDetectionConfiguration()
+            self.configurationGate.performWhenIdle { self.applyFaceDetectionConfiguration() }
         }
     }
 
@@ -370,7 +395,6 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
 
     private func applyFaceDetectionConfiguration() {
         guard setupResult == .success, faceDetectionEnabled != videoDataAttached else { return }
-        cancelCaptures(message: "Face detection changed before capture completed.")
         session.beginConfiguration()
         defer { session.commitConfiguration() }
         if faceDetectionEnabled {
@@ -378,13 +402,7 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
             videoDataOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
             if session.canAddOutput(videoDataOutput) {
                 session.addOutput(videoDataOutput)
-                if let connection = videoDataOutput.connection(with: .video) {
-                    if connection.isVideoRotationAngleSupported(0) { connection.videoRotationAngle = 0 }
-                    if connection.isVideoMirroringSupported {
-                        connection.automaticallyAdjustsVideoMirroring = false
-                        connection.isVideoMirrored = false
-                    }
-                }
+                configureVisionConnection()
                 videoDataOutput.setSampleBufferDelegate(self, queue: visionQueue)
                 videoDataAttached = true
             } else {
@@ -407,13 +425,7 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
             guard size.width > 0, size.height > 0 else { return }
             let frame = layer.layerRectConverted(fromMetadataOutputRect: CGRect(x: 0, y: 0, width: 1, height: 1))
             guard frame.width > 0, frame.height > 0 else { return }
-            let converted = faces.map { face in
-                FaceDetectionPayload(id: face.id, yaw: face.yaw, pitch: face.pitch, roll: face.roll,
-                    boundsX: (frame.minX + face.boundsX * frame.width) / size.width,
-                    boundsY: (frame.minY + face.boundsY * frame.height) / size.height,
-                    boundsWidth: face.boundsWidth * frame.width / size.width,
-                    boundsHeight: face.boundsHeight * frame.height / size.height)
-            }
+            let converted = faces.map { $0.projected(in: frame, previewSize: size) }
             self.onFaceDetected?(converted)
         }
     }
@@ -423,23 +435,30 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
             return .sessionConfigurationFailed
         }
         session.beginConfiguration()
-        defer { session.commitConfiguration() }
+        defer {
+            session.commitConfiguration()
+            if let device = self.input?.device { resetZoom(device) }
+        }
         session.sessionPreset = .photo
         guard session.canAddInput(input) else { return .sessionConfigurationFailed }
         session.addInput(input)
         self.input = input
-        guard session.canAddOutput(photoOutput), session.canAddOutput(metadataOutput) else {
+        guard session.canAddOutput(photoOutput) else {
             session.removeInput(input)
             self.input = nil
             return .sessionConfigurationFailed
         }
         session.addOutput(photoOutput)
-        session.addOutput(metadataOutput)
+        if let connection = photoOutput.connection(with: .video), connection.isVideoStabilizationSupported {
+            connection.preferredVideoStabilizationMode = .auto
+        }
         photoOutput.maxPhotoQualityPrioritization = quality.avQualityPrioritization
-        metadataOutput.setMetadataObjectsDelegate(self, queue: sessionQueue)
-        metadataOutput.metadataObjectTypes = []
+        if session.canAddOutput(metadataOutput) {
+            session.addOutput(metadataOutput)
+            metadataOutput.setMetadataObjectsDelegate(self, queue: sessionQueue)
+            metadataOutput.metadataObjectTypes = []
+        }
         applyDeferredStart()
-        resetZoom(device)
         updateVisionOrientation()
         return .success
     }
@@ -535,19 +554,22 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
         case .landscapeLeft: return 0
         case .landscapeRight: return 180
         case .portraitUpsideDown: return 270
-        default: return 90
+        case .portrait: return 90
+        default: return interfaceOrientation.videoRotationAngle
+        }
+    }
+
+    private func configureVisionConnection() {
+        guard let connection = videoDataOutput.connection(with: .video) else { return }
+        if connection.isVideoRotationAngleSupported(0) { connection.videoRotationAngle = 0 }
+        if connection.isVideoMirroringSupported {
+            connection.automaticallyAdjustsVideoMirroring = false
+            connection.isVideoMirrored = false
         }
     }
 
     private func updateVisionOrientation() {
-        let front = input?.device.position == .front
-        let orientation: CGImagePropertyOrientation
-        switch interfaceOrientation {
-        case .landscapeRight: orientation = front ? .downMirrored : .up
-        case .landscapeLeft: orientation = front ? .upMirrored : .down
-        case .portraitUpsideDown: orientation = front ? .rightMirrored : .left
-        case .portrait: orientation = front ? .leftMirrored : .right
-        }
+        let orientation = interfaceOrientation.visionOrientation(cameraType: input?.device.position == .front ? .front : .back)
         visionQueue.async { self.visionOrientation = orientation }
     }
 
@@ -555,7 +577,8 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
         let orientation = Orientation(from: cameraPreview.window?.windowScene?.interfaceOrientation ?? .portrait) ?? .portrait
         let connection = cameraPreview.previewLayer.connection
         sessionQueue.async {
-            if connection?.isVideoRotationAngleSupported(orientation.videoRotationAngle) == true {
+            if connection?.videoRotationAngle != orientation.videoRotationAngle,
+               connection?.isVideoRotationAngleSupported(orientation.videoRotationAngle) == true {
                 connection?.videoRotationAngle = orientation.videoRotationAngle
             }
             self.interfaceOrientation = orientation

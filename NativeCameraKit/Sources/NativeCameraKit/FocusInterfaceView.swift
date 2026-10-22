@@ -42,192 +42,146 @@ protocol FocusInterfaceViewDelegate: AnyObject {
     func focus(at touchPoint: CGPoint, focusBehavior: FocusBehavior)
 }
 
-/*
- * Full screen focus interface
- */
-class FocusInterfaceView: UIView {
+/// Owns the focus gesture, reticle, and manual-focus reset lifetime.
+final class FocusInterfaceView: UIView {
     weak var delegate: FocusInterfaceViewDelegate?
 
     private var resetFocusTimeout = 0
     private var resetFocusWhenMotionDetected = false
-
-    private let focusView: UIView = UIView(frame: .zero)
+    private let focusView = UIView()
     private var hideFocusViewTimer: Timer?
     private var focusResetTimer: Timer?
-    private var startFocusResetTimerAfterFocusing: Bool = false
-    private var tapToFocusEngaged: Bool = false
-
+    private var isWaitingForFocus = false
+    private var isManualFocusActive = false
+    private var generation = 0
     private var focusGestureRecognizer: UITapGestureRecognizer?
-
-    // MARK: - Lifecycle
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-
         focusView.backgroundColor = .clear
         focusView.layer.borderColor = UIColor.yellow.cgColor
         focusView.layer.borderWidth = 1
         focusView.isHidden = true
         addSubview(focusView)
-
-        isUserInteractionEnabled = true
     }
 
     @available(*, unavailable)
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    deinit {
+        hideFocusViewTimer?.invalidate()
+        focusResetTimer?.invalidate()
     }
 
-    // MARK: - Public
-
     func update(focusMode: FocusMode) {
-        if focusMode == .on {
-            if focusGestureRecognizer == nil {
-                let tapGesture = UITapGestureRecognizer(target: self, action: #selector(focusAndExposeTap(_:)))
-                addGestureRecognizer(tapGesture)
-                focusGestureRecognizer = tapGesture
-            }
-        } else {
-            if let focusGestureRecognizer {
-                removeGestureRecognizer(focusGestureRecognizer)
-                self.focusGestureRecognizer = nil
-            }
+        if focusMode == .on, focusGestureRecognizer == nil {
+            let gesture = UITapGestureRecognizer(target: self, action: #selector(focusAndExposeTap(_:)))
+            addGestureRecognizer(gesture)
+            focusGestureRecognizer = gesture
+        } else if focusMode == .off, let focusGestureRecognizer {
+            removeGestureRecognizer(focusGestureRecognizer)
+            self.focusGestureRecognizer = nil
         }
     }
 
-    func update(resetFocusTimeout: Int) {
-        self.resetFocusTimeout = resetFocusTimeout
-    }
-
+    func update(resetFocusTimeout: Int) { self.resetFocusTimeout = resetFocusTimeout }
     func update(resetFocusWhenMotionDetected: Bool) {
         self.resetFocusWhenMotionDetected = resetFocusWhenMotionDetected
     }
 
     func focusFinished() {
-        dispatchPrecondition(condition: .onQueue(.main))
-        if startFocusResetTimerAfterFocusing, resetFocusTimeout > 0 {
-            startFocusResetTimerAfterFocusing = false
-
-            // Disengage manual focus after focusTimeout milliseconds
-            let focusTimeoutSeconds = TimeInterval(self.resetFocusTimeout) / 1000
-            focusResetTimer = Timer.scheduledTimer(withTimeInterval: focusTimeoutSeconds,
-                                                   repeats: false) { [weak self] _ in
-                self?.resetFocus()
+        guard isManualFocusActive, isWaitingForFocus else { return }
+        isWaitingForFocus = false
+        guard resetFocusTimeout > 0 else { return }
+        let generation = generation
+        focusResetTimer = Timer.scheduledTimer(withTimeInterval: Double(resetFocusTimeout) / 1_000, repeats: false) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.generation == generation else { return }
+                self.resetFocus()
             }
         }
     }
 
     func resetFocus() {
-        dispatchPrecondition(condition: .onQueue(.main))
-        if let focusResetTimer {
-            focusResetTimer.invalidate()
-            self.focusResetTimer = nil
-        }
-
-        // Resetting focus to continuous focus, so not interested in resetting anymore
-        startFocusResetTimerAfterFocusing = false
-
-        // Avoid showing reset-focus animation after each photo capture
-        if !tapToFocusEngaged {
-            return
-        }
-        tapToFocusEngaged = false
-
-        DispatchQueue.main.async {
-            let layerCenter = CGPoint(x: self.bounds.midX, y: self.bounds.midY)
-
-            // Reset current camera focus
-            self.delegate?.focus(at: layerCenter, focusBehavior: .continuousAutoFocus)
-
-            // Create animation to indicate the new focus location
-            let halfDiagonal: CGFloat = 123
-            let halfDiagonalAnimation = halfDiagonal * 2
-
-            let focusViewFrame = CGRect(x: layerCenter.x - (halfDiagonal / 2),
-                                        y: layerCenter.y - (halfDiagonal / 2),
-                                        width: halfDiagonal,
-                                        height: halfDiagonal)
-            let focusViewFrameForAnimation = CGRect(x: layerCenter.x - (halfDiagonalAnimation / 2),
-                                                    y: layerCenter.y - (halfDiagonalAnimation / 2),
-                                                    width: halfDiagonalAnimation,
-                                                    height: halfDiagonalAnimation)
-
-            self.focusView.alpha = 0
-            self.focusView.isHidden = false
-            self.focusView.frame = focusViewFrameForAnimation
-
-            UIView.animate(withDuration: 0.2, animations: {
-                self.focusView.frame = focusViewFrame
-                self.focusView.alpha = 1
-            }, completion: { _ in
-                self.hideFocusViewTimer?.invalidate()
-                self.hideFocusViewTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false, block: { [weak self] _ in
-                    guard let self else { return }
+        guard isManualFocusActive else { return }
+        invalidateFocusWork()
+        isManualFocusActive = false
+        delegate?.focus(at: localCenter, focusBehavior: .continuousAutoFocus)
+        let generation = generation
+        animateReticle(at: localCenter, size: 123) { [weak self] in
+            guard let self, self.generation == generation else { return }
+            self.hideFocusViewTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, self.generation == generation else { return }
                     UIView.animate(withDuration: 0.2, animations: {
                         self.focusView.alpha = 0
-                    }, completion: { _ in
+                    }, completion: { [weak self] _ in
+                        guard let self, self.generation == generation else { return }
                         self.focusView.isHidden = true
                     })
-                })
-            })
+                }
+            }
         }
     }
 
     func cancelPendingFocus() {
-        focusResetTimer?.invalidate()
-        focusResetTimer = nil
-        hideFocusViewTimer?.invalidate()
-        hideFocusViewTimer = nil
-        startFocusResetTimerAfterFocusing = false
-        tapToFocusEngaged = false
+        invalidateFocusWork()
+        if isManualFocusActive {
+            isManualFocusActive = false
+            delegate?.focus(at: localCenter, focusBehavior: .continuousAutoFocus)
+        }
         focusView.layer.removeAllAnimations()
         focusView.isHidden = true
     }
 
-    deinit {
-        focusResetTimer?.invalidate()
-        hideFocusViewTimer?.invalidate()
+    @objc func focusAndExposeTap(_ gesture: UIGestureRecognizer) {
+        invalidateFocusWork()
+        isWaitingForFocus = true
+        isManualFocusActive = true
+        let point = gesture.location(in: self)
+        let generation = generation
+        animateReticle(at: point, size: 73)
+        delegate?.focus(
+            at: point,
+            focusBehavior: .customFocus(
+                resetFocusWhenMotionDetected: resetFocusWhenMotionDetected,
+                resetFocus: { [weak self] in
+                    DispatchQueue.main.async {
+                        guard let self, self.generation == generation else { return }
+                        self.resetFocus()
+                    }
+                },
+                focusFinished: { [weak self] in
+                    DispatchQueue.main.async {
+                        guard let self, self.generation == generation else { return }
+                        self.focusFinished()
+                    }
+                }
+            )
+        )
     }
 
-    // MARK: - Gesture selectors
+    private var localCenter: CGPoint { CGPoint(x: bounds.midX, y: bounds.midY) }
 
-    @objc func focusAndExposeTap(_ gestureRecognizer: UIGestureRecognizer) {
-        let touchPoint = gestureRecognizer.location(in: self)
-        delegate?.focus(at: touchPoint,
-                        focusBehavior: .customFocus(resetFocusWhenMotionDetected: resetFocusWhenMotionDetected,
-                                                    resetFocus: { [weak self] in
-                                                        DispatchQueue.main.async { self?.resetFocus() }
-                                                    },
-                                                    focusFinished: { [weak self] in
-                                                        DispatchQueue.main.async { self?.focusFinished() }
-                                                    }))
-
-        // Disengage manual focus once focusing finishing (if focusTimeout > 0)
-        // See [self observeValueForKeyPath]
+    private func invalidateFocusWork() {
+        generation += 1
+        isWaitingForFocus = false
         focusResetTimer?.invalidate()
+        focusResetTimer = nil
         hideFocusViewTimer?.invalidate()
-        startFocusResetTimerAfterFocusing = true
-        tapToFocusEngaged = true
+        hideFocusViewTimer = nil
+    }
 
-        // Animate focus rectangle
-        let halfDiagonal: CGFloat = 73
-        let halfDiagonalAnimation = halfDiagonal * 2
-
-        let focusViewFrame = CGRect(x: touchPoint.x - (halfDiagonal / 2),
-                                    y: touchPoint.y - (halfDiagonal / 2),
-                                    width: halfDiagonal,
-                                    height: halfDiagonal)
-
+    private func animateReticle(at point: CGPoint, size: CGFloat, completion: (() -> Void)? = nil) {
+        focusView.layer.removeAllAnimations()
         focusView.alpha = 0
         focusView.isHidden = false
-        focusView.frame = CGRect(x: touchPoint.x - (halfDiagonalAnimation / 2),
-                                 y: touchPoint.y - (halfDiagonalAnimation / 2),
-                                 width: halfDiagonalAnimation,
-                                 height: halfDiagonalAnimation)
-
+        focusView.frame = CGRect(x: point.x - size, y: point.y - size, width: size * 2, height: size * 2)
         UIView.animate(withDuration: 0.2, animations: {
-            self.focusView.frame = focusViewFrame
+            self.focusView.frame = CGRect(x: point.x - size / 2, y: point.y - size / 2, width: size, height: size)
             self.focusView.alpha = 1
+        }, completion: { finished in
+            if finished { completion?() }
         })
     }
 }

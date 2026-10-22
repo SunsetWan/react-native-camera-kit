@@ -1,13 +1,14 @@
 import Foundation
 import UIKit
 
-/// Native camera settings. Defaults match the upstream iOS implementation.
+/// Native camera settings. Defaults match the upstream iOS component.
 public struct CameraConfiguration: Equatable {
     public var cameraType: CameraType = .back
     public var resizeMode: ResizeMode = .contain
     public var flashMode: FlashMode = .auto
     public var torchMode: TorchMode = .off
     public var maxPhotoQualityPrioritization: MaxPhotoQualityPrioritization = .balanced
+    /// A height:width guide, such as "16:9" for a portrait frame. Does not crop capture output.
     public var ratioOverlay: String?
     public var ratioOverlayColor: UIColor?
     public var scanBarcode = false
@@ -21,7 +22,7 @@ public struct CameraConfiguration: Equatable {
     public var faceDetectionEnabled = false
     public var faceDetectionThrottleMs = 100
     public var resetFocusTimeout = 0
-    public var resetFocusWhenMotionDetected = false
+    public var resetFocusWhenMotionDetected = true
     public var focusMode: FocusMode = .on
     public var zoomMode: ZoomMode = .on
     public var zoom: Double?

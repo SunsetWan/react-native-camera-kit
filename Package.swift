@@ -10,7 +10,8 @@ let package = Package(
         .testTarget(
             name: "NativeCameraKitTests",
             dependencies: ["NativeCameraKit"],
-            path: "NativeCameraKit/Tests/NativeCameraKitTests"
+            path: "NativeCameraKit/Tests/NativeCameraKitTests",
+            resources: [.copy("Fixtures")]
         )
     ],
     swiftLanguageModes: [.v5]

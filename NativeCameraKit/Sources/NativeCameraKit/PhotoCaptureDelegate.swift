@@ -63,8 +63,9 @@ final class PhotoCaptureDelegate: NSObject, AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput,
                      didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings,
                      error: Error?) {
-        finish(error: error?.localizedDescription)
+        // Queue backend cleanup before the client can submit its next capture.
         onFinished?(requestedPhotoSettings.uniqueID)
+        finish(error: error?.localizedDescription)
     }
 
     func cancel(message: String) { finish(error: message, cancelled: true) }

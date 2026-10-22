@@ -11,6 +11,8 @@
 		1F7A7469DD79624A4A9843B6 /* NativeCameraKit in Frameworks */ = {isa = PBXBuildFile; productRef = 58B3F3B275624FB2BF836972 /* NativeCameraKit */; };
 		2C529584DF8FCFDF30305E38 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240DFC6D592151108F257C84 /* AppDelegate.swift */; };
 		8AFCFD05C92D0DEDF5DA6E5E /* PhotoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F1F6CCDF27F5CF8D27829C /* PhotoViewController.swift */; };
+		C98FAC35DF2A605FFC0ACBE1 /* MountStressViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7210775B33FBD5AD63963F22 /* MountStressViewController.swift */; };
+		CFB2D7278E5D513C06777D48 /* ExampleListViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EE30A760BAA01D10FAE5277 /* ExampleListViewController.swift */; };
 		D4759FF5BCF49D5B84A74192 /* CameraViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33AE1F384210A71339CA7AE4 /* CameraViewController.swift */; };
 		D6D3857C05C9E84407E67BC8 /* CameraKitDemoUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E01414613FDDD10CCB6B9BC7 /* CameraKitDemoUITests.swift */; };
 /* End PBXBuildFile section */
@@ -30,6 +32,8 @@
 		240DFC6D592151108F257C84 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		33AE1F384210A71339CA7AE4 /* CameraViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraViewController.swift; sourceTree = "<group>"; };
 		4E90BB57AA3BAA1225069256 /* CameraSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSettingsViewController.swift; sourceTree = "<group>"; };
+		7210775B33FBD5AD63963F22 /* MountStressViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MountStressViewController.swift; sourceTree = "<group>"; };
+		8EE30A760BAA01D10FAE5277 /* ExampleListViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExampleListViewController.swift; sourceTree = "<group>"; };
 		A4B0F4BE2595E9319186E91E /* react-native-camera-kit */ = {isa = PBXFileReference; lastKnownFileType = folder; name = "react-native-camera-kit"; path = ../..; sourceTree = SOURCE_ROOT; };
 		D1F1F6CCDF27F5CF8D27829C /* PhotoViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewController.swift; sourceTree = "<group>"; };
 		D3BCDA6C06B916E78FE07D56 /* CameraKitDemoUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CameraKitDemoUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -54,6 +58,8 @@
 				240DFC6D592151108F257C84 /* AppDelegate.swift */,
 				4E90BB57AA3BAA1225069256 /* CameraSettingsViewController.swift */,
 				33AE1F384210A71339CA7AE4 /* CameraViewController.swift */,
+				8EE30A760BAA01D10FAE5277 /* ExampleListViewController.swift */,
+				7210775B33FBD5AD63963F22 /* MountStressViewController.swift */,
 				D1F1F6CCDF27F5CF8D27829C /* PhotoViewController.swift */,
 			);
 			path = CameraKitDemo;
@@ -191,6 +197,8 @@
 				2C529584DF8FCFDF30305E38 /* AppDelegate.swift in Sources */,
 				1E29949A6CCD81A46635B9EE /* CameraSettingsViewController.swift in Sources */,
 				D4759FF5BCF49D5B84A74192 /* CameraViewController.swift in Sources */,
+				CFB2D7278E5D513C06777D48 /* ExampleListViewController.swift in Sources */,
+				C98FAC35DF2A605FFC0ACBE1 /* MountStressViewController.swift in Sources */,
 				8AFCFD05C92D0DEDF5DA6E5E /* PhotoViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
