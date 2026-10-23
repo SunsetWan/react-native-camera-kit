@@ -1,0 +1,34 @@
+//
+//  RealPreviewView.swift
+//  NativeCameraKit
+//
+
+import AVFoundation
+import UIKit
+
+class RealPreviewView: UIView {
+    var onLayout: (() -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?()
+    }
+
+    // Use AVCaptureVideoPreviewLayer as the view's backing layer.
+    override class var layerClass: AnyClass {
+        AVCaptureVideoPreviewLayer.self
+    }
+
+    // Create an accessor for the right layer type
+    var previewLayer: AVCaptureVideoPreviewLayer {
+        // We can safely forcecast here, it can't change at runtime
+        // swiftlint:disable:next force_cast
+        return layer as! AVCaptureVideoPreviewLayer
+    }
+
+    // Connect the layer to a capture session.
+    var session: AVCaptureSession? {
+        get { previewLayer.session }
+        set { previewLayer.session = newValue }
+    }
+}

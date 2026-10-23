@@ -1,0 +1,59 @@
+name: CameraKitDemo
+options:
+  bundleIdPrefix: com.sunset.camera-kit
+  deploymentTarget:
+    iOS: '18.0'
+  xcodeVersion: '26.0'
+packages:
+  NativeCameraKit:
+    path: ../..
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    CODE_SIGN_STYLE: Automatic
+targets:
+  CameraKitDemo:
+    type: application
+    platform: iOS
+    sources: [CameraKitDemo]
+    dependencies:
+      - package: NativeCameraKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sunset.camera-kit.demo
+        MARKETING_VERSION: '1.0'
+        CURRENT_PROJECT_VERSION: '1'
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Camera Kit
+        INFOPLIST_KEY_NSCameraUsageDescription: Use the camera to take photos, scan codes, and detect faces.
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+  CameraKitDemoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [CameraKitDemoUITests]
+    dependencies:
+      - target: CameraKitDemo
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  CameraKitDemoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [CameraKitDemoTests]
+    dependencies:
+      - target: CameraKitDemo
+      - package: NativeCameraKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  CameraKitDemo:
+    build:
+      targets:
+        CameraKitDemo: all
+    test:
+      targets: [CameraKitDemoTests, CameraKitDemoUITests]

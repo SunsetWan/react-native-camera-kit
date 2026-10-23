@@ -32,6 +32,10 @@
   </tr>
 </table>
 
+## Native Swift / UIKit version
+
+This fork also includes [NativeCameraKit](NativeCameraKit/README.md), a standalone Swift Package and UIKit example for **iOS 18+**. It implements the iOS camera features without React Native or CocoaPods. See the [feature parity table](NativeCameraKit/PARITY.md) for coverage and device validation limits.
+
 ## Installation (RN > 0.60)
 
 ```bash

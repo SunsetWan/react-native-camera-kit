@@ -98,3 +98,7 @@ dist/
 android/generated/ReactCodegen.podspec
 
 example/.rock/cache/
+
+# Native Swift package
+/.build/
+/.swiftpm/

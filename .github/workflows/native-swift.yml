@@ -1,0 +1,61 @@
+name: Native Swift
+
+on:
+  pull_request:
+    paths:
+      - Package.swift
+      - NativeCameraKit/**
+      - .github/workflows/native-swift.yml
+  push:
+    branches: [master]
+    paths:
+      - Package.swift
+      - NativeCameraKit/**
+      - .github/workflows/native-swift.yml
+
+permissions:
+  contents: read
+
+jobs:
+  native-ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.0'
+      - name: Select an installed iOS simulator
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          devices = json.loads(subprocess.check_output(['xcrun', 'simctl', 'list', 'devices', 'available', '--json']))['devices']
+          candidates = [device['udid'] for runtime, items in devices.items()
+                        if 'iOS-' in runtime and int(runtime.split('iOS-')[1].split('-')[0]) >= 18
+                        for device in items if device['name'].startswith('iPhone')]
+          if not candidates:
+              raise SystemExit('No iOS 18 or later iPhone simulator is installed')
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f'SIMULATOR_ID={candidates[0]}\n')
+          PY
+      - name: Test package
+        run: >-
+          xcodebuild -scheme NativeCameraKit
+          -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
+          -resultBundlePath /tmp/NativeCameraKitTests.xcresult test
+      - name: Test UIKit example
+        run: >-
+          xcodebuild -project NativeCameraKit/Example/CameraKitDemo.xcodeproj
+          -scheme CameraKitDemo
+          -destination "platform=iOS Simulator,id=$SIMULATOR_ID"
+          -resultBundlePath /tmp/CameraKitDemoTests.xcresult test
+      - name: Build device target
+        run: >-
+          xcodebuild -project NativeCameraKit/Example/CameraKitDemo.xcodeproj
+          -scheme CameraKitDemo -destination 'generic/platform=iOS'
+          CODE_SIGNING_ALLOWED=NO build
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-camera-test-results
+          path: /tmp/*Tests.xcresult
