@@ -40,10 +40,20 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+  CameraKitDemoTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [CameraKitDemoTests]
+    dependencies:
+      - target: CameraKitDemo
+      - package: NativeCameraKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   CameraKitDemo:
     build:
       targets:
         CameraKitDemo: all
     test:
-      targets: [CameraKitDemoUITests]
+      targets: [CameraKitDemoTests, CameraKitDemoUITests]

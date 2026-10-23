@@ -10,9 +10,7 @@ final class SimulatorCamera: CameraProtocol {
     private var onZoom: ((Double) -> Void)?
     private var zoom: Double?
     private var maxZoom: Double?
-    private var cameraType: CameraType?
     private var currentZoom = 1.0
-    private var lastZoom: Double?
     private var zoomStartedAt = 1.0
     private var running = false
     private var didSetup = false
@@ -22,7 +20,7 @@ final class SimulatorCamera: CameraProtocol {
     func setup(cameraType: CameraType, supportedBarcodeType: [CodeFormat]) {
         guard !didSetup else { return }
         didSetup = true
-        update(cameraType: cameraType)
+        mockPreview.cameraTypeLabel.text = "Camera: \(cameraType)"
     }
 
     func start() {
@@ -40,8 +38,6 @@ final class SimulatorCamera: CameraProtocol {
 
     func stop() {
         running = false
-        focusTimer?.invalidate()
-        focusTimer = nil
         if let orientationObserver {
             NotificationCenter.default.removeObserver(orientationObserver)
             self.orientationObserver = nil
@@ -69,12 +65,8 @@ final class SimulatorCamera: CameraProtocol {
     func update(torchMode: TorchMode) { mockPreview.torchModeLabel.text = "Torch: \(torchMode)" }
     func update(flashMode: FlashMode) { mockPreview.flashModeLabel.text = "Flash: \(flashMode)" }
     func update(cameraType: CameraType) {
-        guard self.cameraType != cameraType else { return }
-        self.cameraType = cameraType
         mockPreview.cameraTypeLabel.text = "Camera: \(cameraType)"
         mockPreview.randomize()
-        setZoom(zoom ?? 1)
-        emitZoom(currentZoom)
     }
     func update(resizeMode: ResizeMode) {
         mockPreview.resizeModeLabel.text = "Resize: \(resizeMode)"
@@ -82,18 +74,20 @@ final class SimulatorCamera: CameraProtocol {
     }
 
     func update(maxZoom: Double?) {
-        self.maxZoom = maxZoom.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
-        setZoom(zoom ?? currentZoom)
+        self.maxZoom = maxZoom.flatMap { $0.isFinite ? $0 : nil }
     }
 
     func update(zoom: Double?) {
-        self.zoom = zoom.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
-        setZoom(self.zoom ?? currentZoom)
+        guard zoom?.isFinite != false else { return }
+        self.zoom = zoom
+        let desired = zoom ?? 0
+        setZoom(desired == 0 ? 2 : desired)
+        if zoom == nil || zoom == 0 { onZoom?(currentZoom) }
     }
 
     func zoomPinchStart() {
         zoomStartedAt = currentZoom
-        lastZoom = nil
+        mockPreview.zoomLabel.text = "Zoom start"
     }
 
     func zoomPinchChange(pinchScale: CGFloat) {
@@ -101,21 +95,15 @@ final class SimulatorCamera: CameraProtocol {
         let desired = clamp(zoomStartedAt * pinchScale)
         guard desired != currentZoom else { return }
         if zoom == nil { setZoom(desired) }
-        emitZoom(desired)
-    }
-
-    private func emitZoom(_ value: Double) {
-        guard value != lastZoom else { return }
-        lastZoom = value
-        onZoom?(value)
+        onZoom?(desired)
     }
 
     private func clamp(_ value: Double) -> Double {
-        max(cameraType == .front ? 1 : 0.5, min(value, min(maxZoom ?? 75, 75)))
+        max(1, min(value, min(maxZoom ?? 150, 150)))
     }
     private func setZoom(_ value: Double) {
         currentZoom = clamp(value)
-        mockPreview.zoomLabel.text = String(format: "Zoom: %.2fx", currentZoom)
+        mockPreview.zoomLabel.text = "Zoom: \(currentZoom)"
     }
 
     func focus(at touchPoint: CGPoint, focusBehavior: FocusBehavior) {

@@ -60,8 +60,8 @@ final class MountStressViewController: UIViewController {
 
     @objc private func confirmStart() {
         view.endEditing(true)
-        guard let milliseconds = Double(intervalField.text ?? ""), milliseconds.isFinite, milliseconds >= 100 else {
-            statusLabel.text = "Enter an interval of at least 100 milliseconds."
+        guard let milliseconds = Double(intervalField.text ?? ""), milliseconds.isFinite, milliseconds > 0 else {
+            statusLabel.text = "Enter a positive interval in milliseconds."
             return
         }
         let alert = UIAlertController(

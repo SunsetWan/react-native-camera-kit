@@ -44,6 +44,17 @@
             parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "F117EDAEEEA5FE2ABF23F1FF"
+               BuildableName = "CameraKitDemoTests.xctest"
+               BlueprintName = "CameraKitDemoTests"
+               ReferencedContainer = "container:CameraKitDemo.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "BDA42241F5CA9321D61B08B3"
                BuildableName = "CameraKitDemoUITests.xctest"
                BlueprintName = "CameraKitDemoUITests"

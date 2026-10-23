@@ -5,17 +5,38 @@ import XCTest
 
 final class UIParityTests: XCTestCase {
     @MainActor
-    func testRatioGuideHasRequestedAspectAndStaysCenteredInEveryViewport() {
+    func testScannerPreservesRequestedFrameBeyondPreviewBounds() {
+        let scanner = ScannerInterfaceView(frameColor: .white, laserColor: .red)
+        scanner.frame = CGRect(x: 0, y: 0, width: 240, height: 160)
+        scanner.layoutIfNeeded()
+        XCTAssertEqual(scanner.frameSize, CGRect(x: -30, y: 5, width: 300, height: 150))
+
+        scanner.update(frameSize: CGSize(width: 400, height: 300))
+        scanner.layoutIfNeeded()
+        XCTAssertEqual(scanner.frameSize, CGRect(x: -80, y: -70, width: 400, height: 300))
+        XCTAssertTrue(scanner.subviews.dropFirst().allSatisfy { $0.frame.isEmpty })
+
+        scanner.update(frameSize: CGSize(width: 120, height: 100))
+        scanner.layoutIfNeeded()
+        XCTAssertEqual(scanner.frameSize, CGRect(x: 60, y: 30, width: 120, height: 100))
+    }
+
+    @MainActor
+    func testRatioGuidePreservesSourceGeometryInEveryViewport() {
         for size in [CGSize(width: 390, height: 844), CGSize(width: 844, height: 390), CGSize(width: 400, height: 400)] {
-            for (ratio, widthOverHeight) in [("16:9", 9.0 / 16.0), ("9:16", 16.0 / 9.0), ("1:1", 1.0)] {
+            for (ratio, expectedSize) in [
+                ("16:9", CGSize(width: size.width, height: size.height * 9 / 16)),
+                ("9:16", CGSize(width: size.width * 9 / 16, height: size.height)),
+                ("1:1", CGSize(width: size.width, height: size.width))
+            ] {
                 let view = RatioOverlayView(frame: CGRect(origin: CGPoint(x: 40, y: 80), size: size), ratioString: ratio, overlayColor: nil)
                 view.layoutIfNeeded()
                 let visible = unobscuredRectangle(in: view)
-                XCTAssertEqual(visible.width / visible.height, widthOverHeight, accuracy: 0.001, "\(size) \(ratio)")
+                XCTAssertEqual(visible.width, expectedSize.width, accuracy: 0.001, "\(size) \(ratio)")
+                XCTAssertEqual(visible.height, min(expectedSize.height, size.height), accuracy: 0.001, "\(size) \(ratio)")
                 XCTAssertEqual(visible.midX, view.bounds.midX, accuracy: 0.001)
                 XCTAssertEqual(visible.midY, view.bounds.midY, accuracy: 0.001)
                 XCTAssertTrue(view.bounds.contains(visible))
-                XCTAssertTrue(visible.width == size.width || visible.height == size.height)
             }
         }
     }
@@ -120,6 +141,30 @@ final class UIParityTests: XCTestCase {
         XCTAssertEqual(delegate.focusPoints.last, CGPoint(x: 150, y: 250))
         XCTAssertTrue(delegate.lastFocusWasContinuous)
         XCTAssertTrue(focus.subviews.allSatisfy(\.isHidden))
+    }
+
+    @MainActor
+    func testBackgroundResumePreservesManualFocusWithoutResetPolicy() throws {
+        let backend = UIParityCameraSpy()
+        var configuration = CameraConfiguration()
+        configuration.resetFocusTimeout = 0
+        configuration.resetFocusWhenMotionDetected = false
+        let camera = CameraView(camera: backend, configuration: configuration, bypassCameraPermission: true)
+        camera.frame = CGRect(x: 0, y: 0, width: 300, height: 500)
+        camera.start()
+        camera.layoutIfNeeded()
+        let focus = try XCTUnwrap(camera.subviews.compactMap { $0 as? FocusInterfaceView }.first)
+        focus.focusAndExposeTap(FixedPointTap(point: CGPoint(x: 30, y: 50)))
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        XCTAssertFalse(camera.isRunning)
+        XCTAssertFalse(backend.lastFocusWasContinuous)
+        XCTAssertEqual(backend.focusPoints, [CGPoint(x: 30, y: 50)])
+        NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        XCTAssertTrue(camera.isRunning)
+        XCTAssertFalse(backend.lastFocusWasContinuous)
+        XCTAssertTrue(focus.subviews.contains { !$0.isHidden })
+        camera.stop()
+        XCTAssertTrue(backend.lastFocusWasContinuous)
     }
 
     @MainActor

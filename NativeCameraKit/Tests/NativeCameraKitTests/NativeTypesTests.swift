@@ -32,11 +32,11 @@ final class NativeTypesTests: XCTestCase {
         XCTAssertTrue(configuration.iOsDeferredStart)
     }
 
-    func testRotationAnglesMatchPreviewAxes() {
-        XCTAssertEqual(Orientation.portrait.videoRotationAngle, 90)
-        XCTAssertEqual(Orientation.landscapeLeft.videoRotationAngle, 180)
-        XCTAssertEqual(Orientation.portraitUpsideDown.videoRotationAngle, 270)
-        XCTAssertEqual(Orientation.landscapeRight.videoRotationAngle, 0)
+    func testInterfaceOrientationEventsKeepUIKitAxes() {
+        XCTAssertEqual(Orientation(from: UIInterfaceOrientation.portrait), .portrait)
+        XCTAssertEqual(Orientation(from: UIInterfaceOrientation.portraitUpsideDown), .portraitUpsideDown)
+        XCTAssertEqual(Orientation(from: UIInterfaceOrientation.landscapeLeft), .landscapeLeft)
+        XCTAssertEqual(Orientation(from: UIInterfaceOrientation.landscapeRight), .landscapeRight)
     }
 
     func testOnlyPhysicalOrientationsProduceEvents() {

@@ -165,24 +165,16 @@ public enum Orientation: Int, CaseIterable {
         }
     }
 
-    var videoRotationAngle: CGFloat {
-        switch self {
-        case .portrait: return 90
-        case .landscapeLeft: return 180
-        case .portraitUpsideDown: return 270
-        case .landscapeRight: return 0
+}
+
+extension CGImagePropertyOrientation {
+    /// Matches an unrotated, unmirrored video buffer to the actual preview connection.
+    init(cameraRotationAngle angle: CGFloat, mirrored: Bool) {
+        switch angle {
+        case 90: self = mirrored ? .leftMirrored : .right
+        case 180: self = mirrored ? .downMirrored : .down
+        case 270: self = mirrored ? .rightMirrored : .left
+        default: self = mirrored ? .upMirrored : .up
         }
     }
-
-    /// The preview uses interface axes even when physical rotation is locked.
-    func visionOrientation(cameraType: CameraType) -> CGImagePropertyOrientation {
-        let front = cameraType == .front
-        switch self {
-        case .landscapeRight: return front ? .downMirrored : .up
-        case .landscapeLeft: return front ? .upMirrored : .down
-        case .portraitUpsideDown: return front ? .rightMirrored : .left
-        case .portrait: return front ? .leftMirrored : .right
-        }
-    }
-
 }

@@ -9,6 +9,7 @@ final class CameraViewController: UIViewController {
     private let stress: Bool
     private let camera = CameraView()
     private let faceOverlay = FaceOverlayView()
+    private let faceStatsLabel = UILabel()
     private let statusLabel = UILabel()
     private let zoomLabel = UILabel()
     private let zoomSlider = UISlider()
@@ -21,6 +22,9 @@ final class CameraViewController: UIViewController {
     private var zoomTimer: Timer?
     private var barcodeTimer: Timer?
     private var captureTask: Task<Void, Never>?
+    private var photoOrientation = Orientation.portrait
+    private var rotatingViews: [UIView] = []
+    private var followsPhotoZoomEvents = true
 
     init(mode: Mode = .photo, stress: Bool = false) {
         self.mode = mode
@@ -51,14 +55,16 @@ final class CameraViewController: UIViewController {
         navigationItem.scrollEdgeAppearance = navigationAppearance
 
         var configuration = camera.configuration
-        configuration.maxZoom = 10
         configuration.resetFocusWhenMotionDetected = true
-        configuration.maxPhotoQualityPrioritization = .speed
         if mode == .scanner {
             configuration.scanBarcode = true
             configuration.showFrame = true
             configuration.allowedBarcodeTypes = [.qr, .ean13]
             configuration.barcodeFrameSize = CGSize(width: 300, height: 150)
+        } else {
+            configuration.maxZoom = 10
+            configuration.maxPhotoQualityPrioritization = .speed
+            configuration.faceDetectionThrottleMs = 50
         }
         camera.configuration = configuration
 
@@ -106,6 +112,8 @@ final class CameraViewController: UIViewController {
         resetButton.accessibilityLabel = "Reset zoom"
         resetButton.accessibilityIdentifier = "reset-zoom"
         resetButton.addTarget(self, action: #selector(resetZoom), for: .touchUpInside)
+        rotatingViews = toolbarButtons.compactMap(\.imageView) + [zoomLabel]
+        if let titleLabel = resetButton.titleLabel { rotatingViews.append(titleLabel) }
         let zoomRow = UIStackView(arrangedSubviews: [resetButton, zoomSlider, zoomLabel])
         zoomRow.spacing = 12
 
@@ -199,6 +207,50 @@ final class CameraViewController: UIViewController {
         captureTask?.cancel()
     }
 
+    override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
+        super.viewWillTransition(to: size, with: coordinator)
+        coordinator.animate(alongsideTransition: { [weak self] _ in
+            self?.rotateCameraIcons(animated: false)
+        }, completion: { [weak self] _ in
+            self?.rotateCameraIcons(animated: false)
+        })
+    }
+
+    private func rotateCameraIcons(animated: Bool) {
+        guard mode == .photo else { return }
+        let rotation = Self.iconRotation(
+            for: photoOrientation,
+            interfaceOrientation: view.window?.windowScene?.interfaceOrientation ?? .portrait
+        )
+        let updates = { [self] in
+            rotatingViews.forEach { $0.transform = CGAffineTransform(rotationAngle: rotation) }
+        }
+        if animated {
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction], animations: updates)
+        } else {
+            updates()
+        }
+    }
+
+    static func iconRotation(for orientation: Orientation, interfaceOrientation: UIInterfaceOrientation) -> CGFloat {
+        let photoAngle: CGFloat
+        switch orientation {
+        case .portrait: photoAngle = 0
+        case .landscapeLeft: photoAngle = .pi / 2
+        case .portraitUpsideDown: photoAngle = .pi
+        case .landscapeRight: photoAngle = -.pi / 2
+        }
+        // Interface landscape names use the opposite direction from device orientations.
+        let interfaceAngle: CGFloat
+        switch interfaceOrientation {
+        case .landscapeRight: interfaceAngle = .pi / 2
+        case .portraitUpsideDown: interfaceAngle = .pi
+        case .landscapeLeft: interfaceAngle = -.pi / 2
+        default: interfaceAngle = 0
+        }
+        return atan2(sin(photoAngle - interfaceAngle), cos(photoAngle - interfaceAngle))
+    }
+
     private func makePreview() -> UIView {
         let container = UIView()
         let surface = UIView()
@@ -223,6 +275,20 @@ final class CameraViewController: UIViewController {
             surface.addSubview(overlay)
             pin(overlay, to: surface)
         }
+        faceStatsLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        faceStatsLabel.textColor = .white
+        faceStatsLabel.backgroundColor = UIColor.black.withAlphaComponent(0.55)
+        faceStatsLabel.numberOfLines = 0
+        faceStatsLabel.isUserInteractionEnabled = false
+        faceStatsLabel.accessibilityIdentifier = "face-statistics"
+        faceStatsLabel.translatesAutoresizingMaskIntoConstraints = false
+        surface.addSubview(faceStatsLabel)
+        NSLayoutConstraint.activate([
+            faceStatsLabel.topAnchor.constraint(equalTo: surface.topAnchor, constant: 10),
+            faceStatsLabel.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -12),
+            faceStatsLabel.leadingAnchor.constraint(greaterThanOrEqualTo: surface.leadingAnchor, constant: 12)
+        ])
+        updateFaces([])
         return container
     }
 
@@ -249,18 +315,21 @@ final class CameraViewController: UIViewController {
             }
         }
         camera.onFaceDetected = { [weak self] faces in
-            self?.faceOverlay.faces = faces
+            self?.updateFaces(faces)
         }
         camera.onZoom = { [weak self] zoom in
             guard let self else { return }
             zoomSlider.value = Float(zoom)
             zoomLabel.text = String(format: "%.1f×", zoom)
-            if camera.configuration.zoom != nil {
+            if (mode == .photo && followsPhotoZoomEvents) || camera.configuration.zoom != nil {
                 camera.configuration.zoom = zoom
             }
         }
         camera.onOrientationChange = { [weak self] orientation in
-            self?.captureButton.accessibilityHint = "Photo orientation: \(orientation)"
+            guard let self else { return }
+            photoOrientation = orientation
+            captureButton.accessibilityHint = "Photo orientation: \(orientation)"
+            rotateCameraIcons(animated: true)
         }
         camera.onCaptureButtonPressIn = { [weak self] in
             self?.captureButton.alpha = 0.5
@@ -272,6 +341,18 @@ final class CameraViewController: UIViewController {
         camera.onError = { [weak self] error in
             self?.statusLabel.text = error.localizedDescription
         }
+    }
+
+    private func updateFaces(_ faces: [FaceDetectionPayload]) {
+        faceOverlay.faces = faces
+        var lines = ["Faces: \(faces.count)"]
+        if let face = faces.first {
+            lines.append(String(format: "Yaw: %.1f°\nPitch: %.1f°\nRoll: %.1f°", face.yaw, face.pitch, face.roll))
+            lines.append("Facing: \(FaceOverlayView.isFacingCamera(face) ? "yes" : "no")")
+            lines.append(String(format: "Box: %.2f,%.2f %.2f×%.2f", face.boundsX, face.boundsY, face.boundsWidth, face.boundsHeight))
+        }
+        faceStatsLabel.text = lines.joined(separator: "\n")
+        faceStatsLabel.isHidden = !camera.configuration.faceDetectionEnabled
     }
 
     private func button(_ title: String, symbol: String, id: String, action: Selector) -> UIButton {
@@ -297,9 +378,9 @@ final class CameraViewController: UIViewController {
     @objc private func switchCamera() {
         var configuration = camera.configuration
         configuration.cameraType = configuration.cameraType == .back ? .front : .back
-        if configuration.zoom != nil { configuration.zoom = 1 }
+        if (mode == .photo && followsPhotoZoomEvents) || configuration.zoom != nil { configuration.zoom = 1 }
         camera.configuration = configuration
-        faceOverlay.faces = []
+        updateFaces([])
         zoomSlider.value = 1
         zoomLabel.text = "1.0×"
     }
@@ -311,7 +392,7 @@ final class CameraViewController: UIViewController {
 
     @objc private func toggleFaces() {
         camera.configuration.faceDetectionEnabled.toggle()
-        faceOverlay.faces = []
+        updateFaces([])
         updateControls()
     }
 
@@ -349,12 +430,16 @@ final class CameraViewController: UIViewController {
         zoomSlider.maximumValue = Float(configuration.maxZoom ?? 10)
         zoomSlider.value = Float(configuration.zoom ?? Double(zoomSlider.value))
         zoomLabel.text = String(format: "%.1f×", zoomSlider.value)
-        if !configuration.faceDetectionEnabled { faceOverlay.faces = [] }
+        if !configuration.faceDetectionEnabled { updateFaces([]) }
+        faceStatsLabel.isHidden = !configuration.faceDetectionEnabled
     }
 
     @objc private func showSettings() {
         let settings = CameraSettingsViewController(configuration: camera.configuration) { [weak self] configuration in
             guard let self else { return }
+            if configuration.zoom != camera.configuration.zoom {
+                followsPhotoZoomEvents = configuration.zoom != nil
+            }
             camera.configuration = configuration
             updateControls()
         }
@@ -419,12 +504,16 @@ private final class FaceOverlayView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    static func isFacingCamera(_ face: FaceDetectionPayload) -> Bool {
+        let centered = abs(face.boundsX + face.boundsWidth / 2 - 0.5) < 0.2
+            && abs(face.boundsY + face.boundsHeight / 2 - 0.5) < 0.2
+        return abs(face.yaw) < 15 && abs(face.pitch) < 15 && centered
+    }
+
     override func draw(_ rect: CGRect) {
         guard let context = UIGraphicsGetCurrentContext() else { return }
         for face in faces {
-            let centered = abs(face.boundsX + face.boundsWidth / 2 - 0.5) < 0.2
-                && abs(face.boundsY + face.boundsHeight / 2 - 0.5) < 0.2
-            let facing = abs(face.yaw) < 15 && abs(face.pitch) < 15 && centered
+            let facing = Self.isFacingCamera(face)
             let color: UIColor = facing ? .systemGreen : .systemYellow
             let frame = CGRect(
                 x: face.boundsX * bounds.width,

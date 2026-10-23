@@ -20,8 +20,8 @@ final class ScannerInterfaceView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     var frameSize: CGRect {
-        let width = min(bounds.width, max(0, barcodeFrameSize.width))
-        let height = min(bounds.height, max(0, barcodeFrameSize.height))
+        let width = max(0, barcodeFrameSize.width)
+        let height = max(0, barcodeFrameSize.height)
         return CGRect(x: bounds.midX - width / 2, y: bounds.midY - height / 2, width: width, height: height)
     }
 
@@ -29,10 +29,16 @@ final class ScannerInterfaceView: UIView {
         super.layoutSubviews()
         let region = frameSize
         frameView.frame = region
-        overlays[0].frame = CGRect(x: 0, y: 0, width: bounds.width, height: region.minY)
-        overlays[1].frame = CGRect(x: 0, y: region.maxY, width: bounds.width, height: bounds.height - region.maxY)
-        overlays[2].frame = CGRect(x: 0, y: region.minY, width: region.minX, height: region.height)
-        overlays[3].frame = CGRect(x: region.maxX, y: region.minY, width: bounds.width - region.maxX, height: region.height)
+        // Keep the requested frame size; only the surrounding masks are clipped to the preview.
+        let visible = region.intersection(bounds)
+        guard !visible.isNull else {
+            overlays.forEach { $0.frame = .zero }
+            return
+        }
+        overlays[0].frame = CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: visible.minY - bounds.minY)
+        overlays[1].frame = CGRect(x: bounds.minX, y: visible.maxY, width: bounds.width, height: bounds.maxY - visible.maxY)
+        overlays[2].frame = CGRect(x: bounds.minX, y: visible.minY, width: visible.minX - bounds.minX, height: visible.height)
+        overlays[3].frame = CGRect(x: visible.maxX, y: visible.minY, width: bounds.maxX - visible.maxX, height: visible.height)
     }
 
     func startAnimatingScanner() { frameView.startAnimatingScanner() }

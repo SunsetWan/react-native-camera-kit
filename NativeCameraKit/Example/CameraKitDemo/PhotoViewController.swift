@@ -29,10 +29,10 @@ final class PhotoViewController: UIViewController, UIScrollViewDelegate {
 
         let scroll = UIScrollView()
         scroll.delegate = self
-        scroll.maximumZoomScale = 6
+        scroll.maximumZoomScale = 10
         scroll.minimumZoomScale = 1
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        imageView.image = Self.thumbnail(at: photo.url, maximumPixelSize: 2048)
+        imageView.image = UIImage(contentsOfFile: photo.url.path)
         imageView.contentMode = .scaleAspectFit
         imageView.translatesAutoresizingMaskIntoConstraints = false
         imageView.isAccessibilityElement = true

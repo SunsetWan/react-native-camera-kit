@@ -8,7 +8,7 @@ This port uses the iOS behavior of React Native Camera Kit v18.0.1 (`a2a81ce`) a
 
 Open `NativeCameraKit/Example/CameraKitDemo.xcodeproj` in Xcode 26 or later. Select the example scheme, then run on an iPhone or iPad. Set your own signing team for a physical device. The simulator provides an animated balloon scene, live control labels, and timestamped JPEG captures. It does not provide a camera or live detector.
 
-The home screen opens three UIKit examples: Camera, Barcode / QR, and Mount Stress Test. Camera includes camera switching, flash, torch, focus, pinch and controlled zoom, five-photo bursts with timing, face bounds, aspect-ratio guides, photo quality, hardware capture, and a captured-photo viewer. The scanner starts with QR/EAN-13 filters, a 300 × 150 scan frame, vibration, and a result that clears after two seconds. The settings screen exposes timing and appearance controls. The stress screen repeatedly mounts and removes a camera at an editable interval; the camera screen also has a random-zoom stress mode.
+The home screen opens three UIKit examples: Camera, Barcode / QR, and Mount Stress Test. Camera includes camera switching, flash, torch, focus, pinch and controlled zoom, five-photo bursts with timing, face bounds and diagnostics, ratio guides, photo quality, hardware capture, and a full-resolution photo viewer with 10× zoom. Its icons follow the photo orientation. The scanner starts with QR/EAN-13 filters, a 300 × 150 scan frame, vibration, and a result that clears after two seconds. The settings screen exposes timing and appearance controls. The stress screen repeatedly mounts and removes a camera at any positive finite interval; the camera screen also has a random-zoom stress mode.
 
 ## Add the package
 
@@ -72,7 +72,7 @@ Call the UIKit API on the main thread. Attaching the view to a window starts the
 
 To request permission before presenting the view, read `CameraAuthorization.status` and call `try await CameraAuthorization.requestAccess()`. A denied or restricted request returns `false`; a missing usage description throws `CameraError.missingUsageDescription`.
 
-`capture()` returns a typed `CapturedPhoto` containing `url`, `uri`, `name`, `size`, `width`, `height`, and the source-compatible empty `thumb`. The image is not cropped to the scan frame or ratio guide. Concurrent capture requests are rejected while a capture is pending.
+`capture()` returns a typed `CapturedPhoto` containing `url`, `uri`, `name`, `size`, `width`, `height`, and the source-compatible empty `thumb`. The image is not cropped to the scan frame or ratio guide. Concurrent capture requests have independent results. Capture-session changes wait until every outstanding native capture finishes; stopping the camera resolves each pending request once.
 
 ## Optional SwiftUI adapter
 

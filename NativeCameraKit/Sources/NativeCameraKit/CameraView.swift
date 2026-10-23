@@ -17,7 +17,6 @@ public final class CameraView: UIView {
     private var wantsRunning = false
     private var permissionRequestPending = false
     private var isInBackground = false
-    private var captureInProgress = false
     private var hardwareInteraction: Any?
 
     /// True while a session start is requested. Hardware readiness is asynchronous.
@@ -155,9 +154,9 @@ public final class CameraView: UIView {
         pauseCamera()
     }
 
-    private func pauseCamera() {
+    private func pauseCamera(preservingFocus: Bool = false) {
         isRunning = false
-        focusInterfaceView.cancelPendingFocus()
+        if !preservingFocus { focusInterfaceView.cancelPendingFocus() }
         focusInterfaceView.isUserInteractionEnabled = false
         camera.stop()
         scannerInterfaceView.stopAnimatingScanner()
@@ -166,7 +165,7 @@ public final class CameraView: UIView {
 
     @objc private func applicationDidEnterBackground() {
         isInBackground = true
-        pauseCamera()
+        pauseCamera(preservingFocus: true)
     }
 
     @objc private func applicationWillEnterForeground() {
@@ -177,9 +176,6 @@ public final class CameraView: UIView {
     /// Captures JPEG data and writes it to the app cache off the main thread.
     public func capture() async throws -> CapturedPhoto {
         guard isRunning else { throw CameraError.notRunning }
-        guard !captureInProgress else { throw CameraError.captureInProgress }
-        captureInProgress = true
-        defer { captureInProgress = false }
         return try await withCheckedThrowingContinuation { continuation in
             camera.capturePicture(
                 onWillCapture: { [weak self] in
@@ -207,8 +203,10 @@ public final class CameraView: UIView {
 
     private func startAuthorizedCamera() {
         guard wantsRunning, !isRunning, !isInBackground else { return }
-        hasCameraBeenSetup = true
-        applyConfiguration(previous: nil)
+        if !hasCameraBeenSetup {
+            hasCameraBeenSetup = true
+            applyConfiguration(previous: nil)
+        }
         camera.setup(
             cameraType: effectiveCameraType,
             supportedBarcodeType: configuration.scanBarcode ? configuration.supportedBarcodeTypes : []

@@ -106,6 +106,46 @@ final class CameraKitDemoUITests: XCTestCase {
         XCTAssertTrue(app.buttons["capture"].waitForExistence(timeout: 5))
     }
 
+    func testCameraUsesSourceFaceThrottle() {
+        let app = XCUIApplication()
+        app.launch()
+        app.cells["open-camera"].tap()
+        app.buttons["settings"].tap()
+        let throttle = app.cells.containing(.staticText, identifier: "Face throttle").firstMatch
+        for _ in 0..<8 where !throttle.isHittable { app.tables.firstMatch.swipeUp() }
+        XCTAssertTrue(throttle.isHittable)
+        XCTAssertTrue(throttle.staticTexts["50 ms"].exists)
+        attachScreenshot("Source face throttle", app: app)
+    }
+
+    func testMountStressAcceptsShortPositiveInterval() {
+        let app = XCUIApplication()
+        app.launch()
+        app.cells["open-stress-test"].tap()
+        let interval = app.textFields["stress-interval"]
+        interval.tap()
+        interval.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "50")
+        app.buttons["start-stress-test"].tap()
+        XCTAssertTrue(app.alerts.buttons["Start"].waitForExistence(timeout: 3))
+        app.alerts.buttons["Cancel"].tap()
+    }
+
+    func testExplicitUncontrolledZoomSurvivesPinch() {
+        let app = XCUIApplication()
+        app.launch()
+        app.cells["open-camera"].tap()
+        app.buttons["settings"].tap()
+        let controlled = app.switches["Controlled zoom"]
+        for _ in 0..<4 where !controlled.isHittable { app.tables.firstMatch.swipeUp() }
+        XCTAssertEqual(controlled.value as? String, "1")
+        controlled.tap()
+        app.navigationBars.buttons["Done"].tap()
+        app.otherElements["camera-preview"].pinch(withScale: 2, velocity: 1)
+        app.buttons["settings"].tap()
+        for _ in 0..<4 where !controlled.isHittable { app.tables.firstMatch.swipeUp() }
+        XCTAssertEqual(controlled.value as? String, "0")
+    }
+
     private func attachScreenshot(_ name: String, app: XCUIApplication) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name

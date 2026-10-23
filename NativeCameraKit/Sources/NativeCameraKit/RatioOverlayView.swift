@@ -1,6 +1,6 @@
 import UIKit
 
-/// The source API uses height:width, so 16:9 describes a portrait guide.
+/// The source API parses height:width and uses it to scale the viewport guide.
 struct RatioOverlayData: CustomStringConvertible {
     let width: Float
     let height: Float
@@ -67,15 +67,15 @@ final class RatioOverlayView: UIView {
             return
         }
         isHidden = false
-        let aspectRatio = CGFloat(ratioData.ratio)
-        if bounds.width / bounds.height > aspectRatio {
-            let guideWidth = bounds.height * aspectRatio
-            let maskWidth = (bounds.width - guideWidth) / 2
+        // Preserve the source guide geometry. It scales one viewport dimension, not the captured image.
+        if ratioData.width > ratioData.height {
+            let guideWidth = bounds.width / CGFloat(ratioData.ratio)
+            let maskWidth = max(0, (bounds.width - guideWidth) / 2)
             firstMask.frame = CGRect(x: bounds.minX, y: bounds.minY, width: maskWidth, height: bounds.height)
             secondMask.frame = CGRect(x: bounds.maxX - maskWidth, y: bounds.minY, width: maskWidth, height: bounds.height)
         } else {
-            let guideHeight = bounds.width / aspectRatio
-            let maskHeight = (bounds.height - guideHeight) / 2
+            let guideHeight = ratioData.width == ratioData.height ? bounds.width : bounds.height * CGFloat(ratioData.ratio)
+            let maskHeight = max(0, (bounds.height - guideHeight) / 2)
             firstMask.frame = CGRect(x: bounds.minX, y: bounds.minY, width: bounds.width, height: maskHeight)
             secondMask.frame = CGRect(x: bounds.minX, y: bounds.maxY - maskHeight, width: bounds.width, height: maskHeight)
         }

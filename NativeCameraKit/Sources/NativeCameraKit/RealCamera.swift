@@ -52,7 +52,7 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
     private var motionSubscription: UUID?
 
     // Vision queue state.
-    private var visionOrientation: CGImagePropertyOrientation = .right
+    private var visionOrientation: CGImagePropertyOrientation?
 
     override init() {
         super.init()
@@ -201,6 +201,7 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
             report("The selected camera is not available.")
             return
         }
+        visionQueue.async { self.visionOrientation = nil }
         session.beginConfiguration()
         session.removeInput(oldInput)
         if session.canAddInput(newInput) {
@@ -214,7 +215,6 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
         applyDeferredStart()
         session.commitConfiguration()
         observeFocus()
-        updateVisionOrientation()
         if let currentDevice = input?.device { resetZoom(currentDevice) }
         applyBarcodeConfiguration()
         DispatchQueue.main.async { self.updatePreviewOrientation() }
@@ -222,7 +222,7 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
 
     func update(zoom: Double?) {
         sessionQueue.async {
-            self.zoom = zoom.flatMap { $0.isFinite && $0 >= 0 ? $0 : nil }
+            self.zoom = zoom.flatMap { $0.isFinite && $0 != -1 ? $0 : nil }
             guard let device = self.input?.device, let desired = self.zoom else { return }
             self.setZoom(self.validZoom(desired, for: device), on: device)
         }
@@ -230,15 +230,14 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
 
     func update(maxZoom: Double?) {
         sessionQueue.async {
-            self.maxZoom = maxZoom.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
-            guard let device = self.input?.device else { return }
-            self.setZoom(self.validZoom(self.zoom ?? self.normalizedZoom(device), for: device), on: device)
+            self.maxZoom = maxZoom
+            guard let device = self.input?.device, let desired = self.zoom else { return }
+            self.setZoom(self.validZoom(desired, for: device), on: device)
         }
     }
 
     func zoomPinchStart() {
         sessionQueue.async {
-            self.lastZoom = nil
             if let device = self.input?.device { self.zoomStartedAt = self.normalizedZoom(device) }
         }
     }
@@ -284,19 +283,13 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
                         onSuccess: @escaping (Data, Data?, CMVideoDimensions) -> Void,
                         onError: @escaping (String) -> Void) {
         sessionQueue.async {
-            guard self.captureDelegates.isEmpty else {
-                DispatchQueue.main.async { onError("A photo capture is already in progress.") }
-                return
-            }
             guard self.setupResult == .success, self.wantsRunning, self.session.isRunning,
                   !self.session.isInterrupted,
                   let connection = self.photoOutput.connection(with: .video), connection.isEnabled else {
                 DispatchQueue.main.async { onError("The camera is not ready to capture a photo.") }
                 return
             }
-            if connection.isVideoRotationAngleSupported(self.captureRotationAngle) {
-                connection.videoRotationAngle = self.captureRotationAngle
-            }
+            self.applyOrientation(self.captureOrientation, to: connection)
             let settings = AVCapturePhotoSettings(format: [AVVideoCodecKey: AVVideoCodecType.jpeg])
             settings.photoQualityPrioritization = self.photoOutput.maxPhotoQualityPrioritization
             if self.input?.device.isFlashAvailable == true,
@@ -417,7 +410,7 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
 
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer),
+        guard let visionOrientation, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer),
               let faces = faceDetector.process(pixelBuffer: pixelBuffer, orientation: visionOrientation) else { return }
         DispatchQueue.main.async {
             let layer = self.cameraPreview.previewLayer
@@ -459,7 +452,6 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
             metadataOutput.metadataObjectTypes = []
         }
         applyDeferredStart()
-        updateVisionOrientation()
         return .success
     }
 
@@ -487,9 +479,9 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
     private func normalizedZoom(_ device: AVCaptureDevice) -> Double { device.videoZoomFactor / defaultZoom(device) }
     private func validZoom(_ value: Double, for device: AVCaptureDevice) -> Double {
         let base = defaultZoom(device)
-        let minimum = device.minAvailableVideoZoomFactor / base
-        let maximum = min(device.maxAvailableVideoZoomFactor / base, maxZoom ?? .greatestFiniteMagnitude)
-        return max(minimum, min(value, maximum))
+        return CameraZoomRange(minimum: device.minAvailableVideoZoomFactor / base,
+                               maximum: device.maxAvailableVideoZoomFactor / base,
+                               maxZoom: maxZoom).clamp(value)
     }
 
     private func setZoom(_ value: Double, on device: AVCaptureDevice) {
@@ -549,13 +541,25 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
 
     private func report(_ message: String) { DispatchQueue.main.async { self.onError?(message) } }
 
-    private var captureRotationAngle: CGFloat {
+    private var captureOrientation: Orientation {
         switch deviceOrientation {
-        case .landscapeLeft: return 0
-        case .landscapeRight: return 180
-        case .portraitUpsideDown: return 270
-        case .portrait: return 90
-        default: return interfaceOrientation.videoRotationAngle
+        case .landscapeLeft: return .landscapeRight
+        case .landscapeRight: return .landscapeLeft
+        case .portraitUpsideDown: return .portraitUpsideDown
+        case .portrait: return .portrait
+        default: return interfaceOrientation
+        }
+    }
+
+    // This API preserves the upstream cardinal orientation behavior on iOS 18 and later.
+    // Fixed angles are not equivalent: each camera can have a different native sensor orientation.
+    private func applyOrientation(_ orientation: Orientation, to connection: AVCaptureConnection) {
+        guard connection.isVideoOrientationSupported else { return }
+        switch orientation {
+        case .portrait: connection.videoOrientation = .portrait
+        case .portraitUpsideDown: connection.videoOrientation = .portraitUpsideDown
+        case .landscapeLeft: connection.videoOrientation = .landscapeLeft
+        case .landscapeRight: connection.videoOrientation = .landscapeRight
         }
     }
 
@@ -568,21 +572,17 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
         }
     }
 
-    private func updateVisionOrientation() {
-        let orientation = interfaceOrientation.visionOrientation(cameraType: input?.device.position == .front ? .front : .back)
-        visionQueue.async { self.visionOrientation = orientation }
-    }
-
     private func updatePreviewOrientation() {
         let orientation = Orientation(from: cameraPreview.window?.windowScene?.interfaceOrientation ?? .portrait) ?? .portrait
         let connection = cameraPreview.previewLayer.connection
         sessionQueue.async {
-            if connection?.videoRotationAngle != orientation.videoRotationAngle,
-               connection?.isVideoRotationAngleSupported(orientation.videoRotationAngle) == true {
-                connection?.videoRotationAngle = orientation.videoRotationAngle
-            }
             self.interfaceOrientation = orientation
-            self.updateVisionOrientation()
+            guard let connection, connection.inputPorts.contains(where: { $0.input === self.input }) else { return }
+            self.applyOrientation(orientation, to: connection)
+            let imageOrientation = CGImagePropertyOrientation(
+                cameraRotationAngle: connection.videoRotationAngle, mirrored: connection.isVideoMirrored
+            )
+            self.visionQueue.async { self.visionOrientation = imageOrientation }
             DispatchQueue.main.async { self.applyScannerFrame() }
         }
     }
@@ -613,6 +613,20 @@ final class RealCamera: NSObject, CameraProtocol, AVCaptureMetadataOutputObjects
         }
         if let motionSubscription { MotionOrientationSource.shared.remove(motionSubscription); self.motionSubscription = nil }
     }
+}
+
+/// Zoom limits use the same wide-angle-relative scale as the public zoom value.
+struct CameraZoomRange {
+    let minimum: Double
+    let maximum: Double
+
+    init(minimum: Double, maximum: Double, maxZoom: Double?) {
+        self.minimum = minimum
+        let configuredMaximum = maxZoom.flatMap { $0.isFinite && $0 != -1 ? $0 : nil }
+        self.maximum = min(maximum, configuredMaximum ?? .greatestFiniteMagnitude)
+    }
+
+    func clamp(_ value: Double) -> Double { max(minimum, min(value, maximum)) }
 }
 
 /// One retained motion manager avoids CoreMotion teardown races and supports multiple camera views.

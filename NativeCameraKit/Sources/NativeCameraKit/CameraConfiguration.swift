@@ -8,7 +8,7 @@ public struct CameraConfiguration: Equatable {
     public var flashMode: FlashMode = .auto
     public var torchMode: TorchMode = .off
     public var maxPhotoQualityPrioritization: MaxPhotoQualityPrioritization = .balanced
-    /// A height:width guide, such as "16:9" for a portrait frame. Does not crop capture output.
+    /// A source height:width guide, such as "16:9". Scales the viewport mask without cropping capture output.
     public var ratioOverlay: String?
     public var ratioOverlayColor: UIColor?
     public var scanBarcode = false
@@ -57,7 +57,6 @@ public enum CameraError: Error, LocalizedError, Equatable {
     case permissionDenied
     case missingUsageDescription
     case notRunning
-    case captureInProgress
     case previewUnavailable
     case captureFailed(String)
     case fileWriteFailed(String)
@@ -66,7 +65,6 @@ public enum CameraError: Error, LocalizedError, Equatable {
         switch self {
         case .permissionDenied: return "Camera access is denied or restricted. Enable access in Settings."
         case .missingUsageDescription: return "Add NSCameraUsageDescription to the app Info.plist."
-        case .captureInProgress: return "A photo capture is already in progress."
         case .notRunning: return "Start the camera before taking a photo."
         case .previewUnavailable: return "Attach a camera preview before taking a photo."
         case .captureFailed(let message): return message
