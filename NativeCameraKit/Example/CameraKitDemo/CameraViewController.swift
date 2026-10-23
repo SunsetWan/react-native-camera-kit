@@ -25,6 +25,9 @@ final class CameraViewController: UIViewController {
     private var photoOrientation = Orientation.portrait
     private var rotatingViews: [UIView] = []
     private var followsPhotoZoomEvents = true
+    private let photoBodyStack = UIStackView()
+    private let photoControlsStack = UIStackView()
+    private var landscapeControlsWidth: NSLayoutConstraint?
 
     init(mode: Mode = .photo, stress: Bool = false) {
         self.mode = mode
@@ -119,7 +122,19 @@ final class CameraViewController: UIViewController {
 
         let bottom = makeCaptureControls()
 
-        let content = mode == .photo ? [toolbar, preview, statusLabel, zoomRow, bottom] : [toolbar, preview, statusLabel]
+        let content: [UIView]
+        if mode == .photo {
+            photoControlsStack.axis = .vertical
+            photoControlsStack.spacing = 10
+            [statusLabel, zoomRow, bottom].forEach(photoControlsStack.addArrangedSubview)
+            photoBodyStack.axis = .vertical
+            photoBodyStack.spacing = 10
+            [preview, photoControlsStack].forEach(photoBodyStack.addArrangedSubview)
+            landscapeControlsWidth = photoControlsStack.widthAnchor.constraint(equalToConstant: 260)
+            content = [toolbar, photoBodyStack]
+        } else {
+            content = [toolbar, preview, statusLabel]
+        }
         let stack = UIStackView(arrangedSubviews: content)
         stack.axis = .vertical
         stack.spacing = 10
@@ -135,6 +150,18 @@ final class CameraViewController: UIViewController {
         ])
         connectEvents()
         updateControls()
+    }
+
+    override func viewWillLayoutSubviews() {
+        super.viewWillLayoutSubviews()
+        guard mode == .photo else { return }
+        let isLandscape = view.bounds.width > view.bounds.height
+        let axis: NSLayoutConstraint.Axis = isLandscape ? .horizontal : .vertical
+        guard photoBodyStack.axis != axis else { return }
+        if !isLandscape { landscapeControlsWidth?.isActive = false }
+        photoBodyStack.axis = axis
+        photoControlsStack.distribution = isLandscape ? .equalSpacing : .fill
+        if isLandscape { landscapeControlsWidth?.isActive = true }
     }
 
     private func makeCaptureControls() -> UIView {
@@ -331,11 +358,7 @@ final class CameraViewController: UIViewController {
             captureButton.accessibilityHint = "Photo orientation: \(orientation)"
             rotateCameraIcons(animated: true)
         }
-        camera.onCaptureButtonPressIn = { [weak self] in
-            self?.captureButton.alpha = 0.5
-        }
         camera.onCaptureButtonPressOut = { [weak self] in
-            self?.captureButton.alpha = 1
             self?.capture()
         }
         camera.onError = { [weak self] error in

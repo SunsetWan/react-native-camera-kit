@@ -10,6 +10,7 @@
 		05F06BA700064BF3ED7C7DE3 /* ExampleParityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F013AC05EC4FAD638A5574A6 /* ExampleParityTests.swift */; };
 		1E29949A6CCD81A46635B9EE /* CameraSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E90BB57AA3BAA1225069256 /* CameraSettingsViewController.swift */; };
 		1F7A7469DD79624A4A9843B6 /* NativeCameraKit in Frameworks */ = {isa = PBXBuildFile; productRef = 58B3F3B275624FB2BF836972 /* NativeCameraKit */; };
+		2B64AB7DBE235015C94D931E /* HardwareAcceptanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70704B9ECF915FF06CD13B83 /* HardwareAcceptanceTests.swift */; };
 		2C529584DF8FCFDF30305E38 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 240DFC6D592151108F257C84 /* AppDelegate.swift */; };
 		51E168A7028129461A8B9669 /* NativeCameraKit in Frameworks */ = {isa = PBXBuildFile; productRef = 701C83CC42C1EF2643B5D3AB /* NativeCameraKit */; };
 		8AFCFD05C92D0DEDF5DA6E5E /* PhotoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F1F6CCDF27F5CF8D27829C /* PhotoViewController.swift */; };
@@ -42,6 +43,7 @@
 		240DFC6D592151108F257C84 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		33AE1F384210A71339CA7AE4 /* CameraViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraViewController.swift; sourceTree = "<group>"; };
 		4E90BB57AA3BAA1225069256 /* CameraSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraSettingsViewController.swift; sourceTree = "<group>"; };
+		70704B9ECF915FF06CD13B83 /* HardwareAcceptanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareAcceptanceTests.swift; sourceTree = "<group>"; };
 		7210775B33FBD5AD63963F22 /* MountStressViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MountStressViewController.swift; sourceTree = "<group>"; };
 		854BF00E03A6CF4F2F7A95E3 /* HardwareCaptureIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareCaptureIntegrationTests.swift; sourceTree = "<group>"; };
 		880F0A875CEB96ED5C37D5A7 /* CameraKitDemoTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = CameraKitDemoTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -110,6 +112,7 @@
 			isa = PBXGroup;
 			children = (
 				E01414613FDDD10CCB6B9BC7 /* CameraKitDemoUITests.swift */,
+				70704B9ECF915FF06CD13B83 /* HardwareAcceptanceTests.swift */,
 			);
 			path = CameraKitDemoUITests;
 			sourceTree = "<group>";
@@ -252,6 +255,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D6D3857C05C9E84407E67BC8 /* CameraKitDemoUITests.swift in Sources */,
+				2B64AB7DBE235015C94D931E /* HardwareAcceptanceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -50,25 +50,27 @@ The UIKit home screen follows `example/src/App.tsx`: Camera, Barcode / QR, and M
 
 Camera icons animate through orientation changes over 200 ms. The native UI subtracts the interface rotation to avoid the original example's documented double rotation when the interface also rotates. Face detection uses preview axes, including when interface rotation is locked; live bounds and angle checks remain part of hardware acceptance.
 
+In landscape, photo controls move beside the preview so the toolbar and capture controls do not compress its height. Rotation keeps the same camera view and session. Hardware press-in does not dim the shutter; a completed press-out starts the five-photo burst.
+
 The scanner matches the QR/EAN-13 filter, 300 × 150 frame, red scan line, 3:4 preview, vibration, and two-second result clear. It retains the library's balanced quality and unrestricted maximum zoom. The mount test accepts a positive finite interval and supports manual stop. UIKit navigation and a settings table replace React Native controls.
 
 ## Physical-device acceptance
 
 These checks require a real device and are not implied by a passing simulator test.
 
-The current device run passed front/rear portrait capture, overlapping capture requests, QR/EAN-13 decoding, and rear face bounds. See [VALIDATION.md](VALIDATION.md) for exact coverage. Each item below covers a broader matrix; partial evidence does not check the whole item.
+The current device run passed front/rear JPEG capture in all four physical orientations, front single-face overlay alignment in those poses, overlapping capture requests, QR/EAN-13 decoding, rear single-face bounds, and volume/Camera Control capture buttons. It also passed permission denial/restoration, six camera/quality combinations, rear flash modes, and deferred-start off/on captures. See [VALIDATION.md](VALIDATION.md) for exact coverage. Each item below covers a broader matrix; partial evidence does not check the whole item.
 
-- [ ] Grant, deny, and restore camera permission in Settings; confirm no blank silent failure.
+- [x] Grant, deny, and restore camera permission in Settings; confirm no blank silent failure on the tested device.
 - [ ] Open and close the camera repeatedly; background/foreground it; interrupt it with another camera user and recover.
-- [ ] Switch front/back cameras; inspect preview and JPEG orientation in all four device orientations.
+- [x] Switch front/back cameras; inspect preview and JPEG orientation in all four device orientations on the tested iPhone 17 Pro Max.
 - [ ] Pinch from minimum to maximum; apply controlled zoom and a maximum; switch cameras after zooming.
-- [ ] Exercise flash auto/on/off and torch on/off on supported cameras.
+- [ ] Exercise flash auto/on/off and torch on/off on supported cameras. Rear modes passed; front flash and lighting extremes remain open.
 - [ ] Tap at each preview corner, change the subject, and verify timeout/motion focus reset.
-- [ ] Capture repeatedly at every quality setting; inspect JPEG dimensions and cache URLs.
+- [x] Capture repeatedly at every quality setting with front and rear cameras on the tested device; inspect JPEG dimensions and cache URLs.
 - [ ] Scan QR and supported barcodes inside/outside the frame; change filters, frame size, and throttle while running.
 - [ ] Detect zero/one/multiple faces with front and rear cameras, contain/cover, rotation, and different aspect ratios; verify overlay alignment and angle signs.
-- [ ] Press and release a supported hardware capture button; ensure the application captures once on release.
-- [ ] On iOS 26+, compare startup and first capture with deferred start on/off.
+- [x] Press and release volume up, volume down, and Camera Control; each complete press produces one five-photo burst. Human presses and synthesized XCTest presses passed on the tested device.
+- [x] On iOS 26+, record startup and first capture with deferred start on/off on a supported output. Single samples are recorded; a controlled performance comparison remains open.
 
 ## Evidence boundary
 
